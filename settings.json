@@ -1,0 +1,17 @@
+{
+  "general": {
+    "owner": "",
+    "prefix": ".",
+    "GlobalChat": true,
+    "simsimi": false
+  },
+  "sticker": {
+    "author": "izo.my.id",
+    "pack": "Tesy Bot"
+  },
+  "apikey": {
+    "removebg": "",
+    "simsimi": "",
+    "apiflash": ""
+  }
+}
