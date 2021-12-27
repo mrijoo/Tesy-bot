@@ -24,7 +24,7 @@
     "exceljs": "^4.3.0",
     "file-type": "^16.0.1",
     "got": "^11.8.2",
-    "mathjs": "^9.4.3",
+    "mathjs": "^10.0.1",
     "moment-timezone": "^0.5.32",
     "node-gtts": "^2.0.2",
     "primbon-scraper": "^1.0.0",
