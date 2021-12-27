@@ -1,1 +1,1 @@
-exports.menuID = require('./ID')
+exports.langID = require('./ID')

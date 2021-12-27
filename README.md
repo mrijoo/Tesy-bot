@@ -31,3 +31,7 @@
 | Arti Nama |✅|
 | Arti Mimpi |✅|
 | Ramal Jodoh |✅|
+| Absensi |✅|
+| OCR |✅|
+| Play |✅|
+| Motivasi |✅|

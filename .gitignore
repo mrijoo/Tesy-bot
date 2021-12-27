@@ -1,0 +1,12 @@
+node_modules
+.node-persist
+logs
+session.data.json
+lib/build
+yarn.lock
+
+# managed
+**.data.json
+**.node-persist**
+**_IGNORE_**
+# end managed

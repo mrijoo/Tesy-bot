@@ -1,20 +1,37 @@
-const fs = require('fs')
-let { general } = JSON.parse(fs.readFileSync('./settings.json'))
-let prefix = general.prefix
+exports.isReg = () => {
+    return `Kamu sudah terdaftar`
+}
+
+exports.notReg = (prefix, private) => {
+    if (private) {
+        return `Kamu belum terdaftar. Kirim *${prefix}daftar* untuk mendaftar`
+    } else {
+        return `Kamu belum terdaftar. Kirim *${prefix}daftar* diprivate chat untuk mendaftar`
+    }
+}
+
+exports.wait = () => {
+    return `Mohon tunggu sebentar...`
+}
+
+exports.isPrivate = () => {
+    return `Gagal, perintah ini hanya dapat digunakan diprivate chat`
+}
 
 exports.textAbout = () => {
     return `
 *About*
 Bot developed by *izo*.
-Bot open source https://github.com/mrijoo/Tesy-bot
+untuk lebih lengkapnya di mrijoo.net
 `
 }
 
-exports.textMenu = (pushname) => {
+exports.textMenu = (pushname, prefix) => {
     return `
 Hi, ${pushname} 👋️
 Berikut adalah beberapa fitur yang ada pada bot ini!
 
+*${prefix}prefix* [prefix]
 *${prefix}stiker* [teks/url]
 *${prefix}simi* on/off
 *${prefix}gtts* [kode negara] [teks]
@@ -28,6 +45,37 @@ Berikut adalah beberapa fitur yang ada pada bot ini!
 *${prefix}artinama* [nama]
 *${prefix}artimimpi* [kata kunci mimpi]
 *${prefix}cocok?* [nama mu] & [nama pasangan]
+*${prefix}totext* [gambar]
+*${prefix}play* [lagu]
+*${prefix}motivasi*
+*${prefix}wame*
+*${prefix}ping*
+*${prefix}about*
+
+`
+}
+
+exports.textMenuSCH = (pushname, prefix) => {
+    return `
+Hi, ${pushname} 👋️
+Berikut adalah beberapa fitur yang ada pada bot ini!
+
+*${prefix}absen* [pesan]
+Untuk membuat list absensi baru. 
+Penggunaan: ${prefix}absen Pagi semua absen yuk
+
+*${prefix}hadir* [pesan]
+Untuk mengisi daftar kehadiran di list absensi. 
+Penggunaan: ${prefix}hadir _Hadir
+
+*${prefix}absensi* / *${prefix}listabsensi*
+Untuk mengecek hasil list absensi. 
+Penggunaan: ${prefix}listabsensi
+
+*${prefix}prefix* [prefix baru]
+Untuk menganti prefix. 
+Penggunaan: ${prefix}prefix ,
+
 *${prefix}ping*
 *${prefix}about*
 
@@ -89,4 +137,58 @@ vi: Vietnamese       cy: Welsh
 xh: Xhosa            yi: Yiddish
 yo: Yoruba           zu: Zulu
 `
+}
+
+exports.textReg = (NomorWA, UserData, prefix) => {
+    const jumlahmember = Object.keys(UserData.user).length
+    const sekolah = UserData.user[`${NomorWA}`].profile.sekolah === undefined
+    if (!sekolah) {
+        const status = UserData.user[`${NomorWA}`].profile.sekolah.status
+        let pgskls = UserData.user[`${NomorWA}`].profile.sekolah.penguruskelas
+        if (status === "Siswa") {
+            (pgskls) ? pgskls = "Pengurus kelas" : pgskls = "Bukan Pengurus kelas"
+            return `
+Pendaftaran @${NomorWA.replace(/[@c.us]/g, '')} berhasil pada ${UserData.user[`${NomorWA}`].pendaftaran.tanggal} jam ${UserData.user[`${NomorWA}`].pendaftaran.jam}
+₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋
+Nomor: ${NomorWA.replace('@c.us', '')}
+Nama: ${UserData.user[`${NomorWA}`].profile.nama}
+Asal: ${UserData.user[`${NomorWA}`].profile.asal}
+Tanggal lahir: ${UserData.user[`${NomorWA}`].profile.tgllhr}
+Sekolah: ${UserData.user[`${NomorWA}`].profile.sekolah.nama}
+Kelas: ${UserData.user[`${NomorWA}`].profile.sekolah.kelas}
+Absen: ${UserData.user[`${NomorWA}`].profile.sekolah.absen}
+Status: ${pgskls}
+
+⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻
+Untuk menggunakan bot silahkan kirim *${prefix}menu*
+Total Pengguna yang telah terdaftar ${jumlahmember}
+`
+        } else if (status === "Guru") {
+            return `
+Pendaftaran @${NomorWA.replace(/[@c.us]/g, '')} berhasil pada ${UserData.user[`${NomorWA}`].pendaftaran.tanggal} jam ${UserData.user[`${NomorWA}`].pendaftaran.jam}
+₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋
+Nomor: ${NomorWA.replace('@c.us', '')}
+Nama: ${UserData.user[`${NomorWA}`].profile.nama}
+Asal: ${UserData.user[`${NomorWA}`].profile.asal}
+Tanggal lahir: ${UserData.user[`${NomorWA}`].profile.tgllhr}
+Sekolah: ${UserData.user[`${NomorWA}`].profile.sekolah.nama}
+Kelas: ${UserData.user[`${NomorWA}`].profile.sekolah.kelas}
+⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻
+Untuk menggunakan bot silahkan kirim *${prefix}menu*
+Total Pengguna yang telah terdaftar ${jumlahmember}
+`
+        }
+    } else {
+        return `
+Pendaftaran @${NomorWA.replace(/[@c.us]/g, '')} berhasil pada ${UserData.user[`${NomorWA}`].pendaftaran.tanggal} jam ${UserData.user[`${NomorWA}`].pendaftaran.jam}
+₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋
+Nomor: ${NomorWA.replace('@c.us', '')}
+Nama: ${UserData.user[`${NomorWA}`].profile.nama}
+Asal: ${UserData.user[`${NomorWA}`].profile.asal}
+Tanggal lahir: ${UserData.user[`${NomorWA}`].profile.tgllhr}
+⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻
+Untuk menggunakan bot silahkan kirim *${prefix}menu*
+Total Pengguna yang telah terdaftar ${jumlahmember}
+`
+    }
 }

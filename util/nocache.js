@@ -2,22 +2,12 @@ const path = require('path');
 const fs = require('fs');
 
 const NOCache = (session) => new Promise((resolve, reject) => {
-
-    /**
-     * Uncache if there is file change
-     * @param {string} module Module name or path
-     * @param {function} cb <optional> 
-     */
     const nocache = (module, call = () => {}) => {
         fs.watchFile(require.resolve(module), async () => {
             await uncache(require.resolve(module))
             call(module)
         })
     }
-    /**
-     * Uncache a module
-     * @param {string} module Module name or path
-     */
     const uncache = (module = '.') => {
         return new Promise((resolve, reject) => {
             try {
@@ -29,7 +19,7 @@ const NOCache = (session) => new Promise((resolve, reject) => {
         })
     }
 
-    const namedir = ["./", "../", "../lib"];
+    const namedir = ["./", "../", "../lib", "../media", "../message"];
     const namefiles = [];
 
     for (let i = 0; i < namedir.length; i++) {

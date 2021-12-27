@@ -1,3 +1,4 @@
+const fs = require('fs')
 const {
     create,
     Client
@@ -6,11 +7,16 @@ const {
     color,
     nocache
 } = require('./util')
+const {
+    WA
+} = setting = JSON.parse(fs.readFileSync('./settings.json'))
+const OwnerNumber = setting.general.owner + '@c.us'
 const updateJson = require('update-json-file');
 const argsS = process.argv.slice(2)
 
 const start = (client = new Client()) => {
     console.log('[DEV]', color('mrijoo', 'green'))
+    console.log('[WEBSITE]', color('mrijoo.net', 'green'))
     console.log('[CLIENT] CLIENT Started!')
 
     client.onAnyMessage((fn) => messageLog(fn.fromMe, fn.type))
@@ -42,6 +48,19 @@ const start = (client = new Client()) => {
         .catch((err) => {
             console.error(err)
         })
+
+    client.onPlugged(async (Plugged) => {
+        Plugged ? console.log('[DEVICE]', color('🔌 Charging...', 'lime')) : console.log('[DEVICE]', color('⚡ Discharging!', 'lime'))
+        while (Plugged) {
+            if (await client.getBatteryLevel() == 100) {
+                console.log('[DEVICE]', color('🔋 Battery Level 100', 'lime'))
+                client.sendText(OwnerNumber, 'Battery Level 100')
+                break
+            } else {
+                Plugged = await client.getIsPlugged()
+            }
+        }
+    })
 }
 let session
 if (argsS === undefined) {
@@ -53,14 +72,18 @@ if (argsS === undefined) {
 nocache(session)
 const options = {
     sessionId: `${session}`,
-    headless: true,
-    qrTimeout: 0,
-    authTimeout: 0,
+    multiDevice: WA.multiDevice,
+    headless: WA.headless,
+    popup: WA.popup,
+    qrTimeout: WA.qrTimeout,
+    authTimeout: WA.authTimeout,
     restartOnCrash: start,
-    cacheEnabled: false,
-    useChrome: true,
-    killProcessOnBrowserClose: true,
-    throwErrorOnTosBlock: false,
+    cacheEnabled: WA.cacheEnabled,
+    useChrome: WA.useChrome,
+    hostNotificationLang: WA.hostNotificationLang,
+    logConsole: WA.logConsole,
+    killProcessOnBrowserClose: WA.killProcessOnBrowserClose,
+    throwErrorOnTosBlock: WA.throwErrorOnTosBlock,
     chromiumArgs: [
         '--no-sandbox',
         '--disable-setuid-sandbox',

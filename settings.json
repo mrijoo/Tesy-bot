@@ -1,12 +1,27 @@
 {
+  "WA":{
+    "multiDevice": true,
+    "headless": true,
+    "popup": true,
+    "qrTimeout": 0,
+    "authTimeout": 60,
+    "cacheEnabled": false,
+    "useChrome": true,
+    "hostNotificationLang": "ID_ID",
+    "logConsole": false,
+    "killProcessOnBrowserClose": true,
+    "throwErrorOnTosBlock": false
+  },
   "general": {
     "owner": "",
     "prefix": ".",
     "GlobalChat": true,
-    "simsimi": false
+    "simsimi": false,
+    "autoread": true,
+    "delay": 5
   },
   "sticker": {
-    "author": "izo.my.id",
+    "author": false,
     "pack": "Tesy Bot"
   },
   "apikey": {
