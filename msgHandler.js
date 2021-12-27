@@ -90,17 +90,6 @@ module.exports = msgHandler = async (client, message) => {
         const chats = (type === 'chat') ? body : (type === 'image' || type === 'video') ? caption : ''
         const isImage = type === 'image'
 
-        let Sticker =  {}
-        if (sticker.author === false) {
-            Sticker['author'] = UserData.user[`${sender.id}`].profile.nama
-        } else {
-            Sticker['author'] = sticker.author
-        }
-        if (sticker.pack === false) {
-            Sticker['pack'] = pkg.name
-        } else {
-            Sticker['pack'] = sticker.pack
-        }
         let guruorpgls
         if (isReg === true) {
             if (!UserData.user[`${sender.id}`].profile.sekolah === undefined) {
@@ -892,6 +881,7 @@ module.exports = msgHandler = async (client, message) => {
                 }
             }
         }
+
         body = (type === 'chat' && body.startsWith(prefix)) ? body : (((type === 'image' || type === 'video') && caption) && caption.startsWith(prefix)) ? caption : ''
         if (body[1] === ' ') {
             body = body.replace(' ', '')
@@ -911,6 +901,19 @@ module.exports = msgHandler = async (client, message) => {
         const isSticker = quotedMsg && quotedMsg.type === 'sticker'
         const isQuotedSticker = quotedMsg && quotedMsg.type === 'sticker'
 
+        if (isReg) {
+            let Sticker =  {}
+            if (sticker.author === false) {
+                Sticker['author'] = UserData.user[`${sender.id}`].profile.nama
+            } else {
+                Sticker['author'] = sticker.author
+            }
+            if (sticker.pack === false) {
+                Sticker['pack'] = pkg.name
+            } else {
+                Sticker['pack'] = sticker.pack
+            }
+        }
         if (isPrivate) {
             if (isReg === 'pending') return Daftar()
         } else if (isGroupMsg) {
