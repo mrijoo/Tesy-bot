@@ -901,8 +901,8 @@ module.exports = msgHandler = async (client, message) => {
         const isSticker = quotedMsg && quotedMsg.type === 'sticker'
         const isQuotedSticker = quotedMsg && quotedMsg.type === 'sticker'
 
+        let Sticker =  {}
         if (isReg) {
-            let Sticker =  {}
             if (sticker.author === false) {
                 Sticker['author'] = UserData.user[`${sender.id}`].profile.nama
             } else {
@@ -1607,7 +1607,7 @@ module.exports = msgHandler = async (client, message) => {
                     const UPTIME = await convertTime(os.uptime())
                     const osPlatfom = await Platfom(os.platform())
                     const device = await client.getMe()
-                    client.reply(from, `💻 *Platform Info* :\n- CPU: ${os.cpus()[0].model}\n- RAM: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)}MB / ${Math.round(require('os').totalmem / 1024 / 1024)}MB\n- Platform: ${osPlatfom}\n- UPTIME: ${UPTIME}\n\n*📱 Device Info* :\n- 🔋 Battery: ${battery} ${isCharged ? '🔌 Charging...' : '⚡ Discharging'}\n- 24 Hours Online : ${device.is24h}\n\n*Status* :\n- ${loadedMsg} Loaded Messages\n- ${groups.length} Group Chats\n- ${chatIds.length - groups.length} Personal Chats\n- ${chatIds.length} Total Chats\n- ${receive.chat} Chats Received\n\nSpeed: ${processTime(t, moment())} Second`, id)
+                    client.reply(from, `💻 *Platform Info* :\n- CPU: ${os.cpus()[0].model}\n- RAM: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)}MB / ${Math.round(require('os').totalmem / 1024 / 1024)}MB\n- Platform: ${osPlatfom}\n- UPTIME: ${UPTIME}\n\n*📱 Device Info* :\n- 🔋 Battery: ${battery} ${isCharged ? '🔌 Charging...' : '⚡ Discharging'}\n- 24 Hours Online : ${device.is24h == undefined ? '♾️' : device.is24h }\n\n*Status* :\n- ${loadedMsg} Loaded Messages\n- ${groups.length} Group Chats\n- ${chatIds.length - groups.length} Personal Chats\n- ${chatIds.length} Total Chats\n- ${receive.chat} Chats Received\n\nSpeed: ${processTime(t, moment())} Second`, id)
                     client.simulateTyping(from, false)
                     break
 
