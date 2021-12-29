@@ -18,7 +18,7 @@
   "license": "MIT",
   "dependencies": {
     "@mrijoo/text2image": "^1.0.0",
-    "@open-wa/wa-automate": "4.27.8",
+    "@open-wa/wa-automate": "4.28.0",
     "chalk": "^4.1.0",
     "dotenv": "^10.0.0",
     "exceljs": "^4.3.0",
