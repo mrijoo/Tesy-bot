@@ -20,7 +20,7 @@
     "@mrijoo/text2image": "^1.0.0",
     "@open-wa/wa-automate": "4.27.8",
     "chalk": "^4.1.0",
-    "dotenv": "^10.0.0",
+    "dotenv": "^14.0.1",
     "exceljs": "^4.3.0",
     "file-type": "^16.5.3",
     "got": "^11.8.3",
