@@ -139,15 +139,16 @@ yo: Yoruba           zu: Zulu
 `
 }
 
-exports.textReg = (NomorWA, UserData, prefix) => {
-    const jumlahmember = Object.keys(UserData.user).length
-    const sekolah = UserData.user[`${NomorWA}`].profile.sekolah === undefined
-    if (!sekolah) {
-        const status = UserData.user[`${NomorWA}`].profile.sekolah.status
-        let pgskls = UserData.user[`${NomorWA}`].profile.sekolah.penguruskelas
-        if (status === "Siswa") {
-            (pgskls) ? pgskls = "Pengurus kelas" : pgskls = "Bukan Pengurus kelas"
-            return `
+exports.textReg = (NomorWA, UserData, prefix, RegMed, mysqlJM) => {
+    if (RegMed == 'json') {
+        const jumlahmember = Object.keys(UserData.user).length
+        const sekolah = UserData.user[`${NomorWA}`].profile.sekolah === undefined
+        if (!sekolah) {
+            const status = UserData.user[`${NomorWA}`].profile.sekolah.status
+            let pgskls = UserData.user[`${NomorWA}`].profile.sekolah.penguruskelas
+            if (status === "Siswa") {
+                (pgskls) ? pgskls = "Pengurus kelas": pgskls = "Bukan Pengurus kelas"
+                return `
 Pendaftaran @${NomorWA.replace(/[@c.us]/g, '')} berhasil pada ${UserData.user[`${NomorWA}`].pendaftaran.tanggal} jam ${UserData.user[`${NomorWA}`].pendaftaran.jam}
 ₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋
 Nomor: ${NomorWA.replace('@c.us', '')}
@@ -163,8 +164,8 @@ Status: ${pgskls}
 Untuk menggunakan bot silahkan kirim *${prefix}menu*
 Total Pengguna yang telah terdaftar ${jumlahmember}
 `
-        } else if (status === "Guru") {
-            return `
+            } else if (status === "Guru") {
+                return `
 Pendaftaran @${NomorWA.replace(/[@c.us]/g, '')} berhasil pada ${UserData.user[`${NomorWA}`].pendaftaran.tanggal} jam ${UserData.user[`${NomorWA}`].pendaftaran.jam}
 ₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋
 Nomor: ${NomorWA.replace('@c.us', '')}
@@ -177,9 +178,9 @@ Kelas: ${UserData.user[`${NomorWA}`].profile.sekolah.kelas}
 Untuk menggunakan bot silahkan kirim *${prefix}menu*
 Total Pengguna yang telah terdaftar ${jumlahmember}
 `
-        }
-    } else {
-        return `
+            }
+        } else {
+            return `
 Pendaftaran @${NomorWA.replace(/[@c.us]/g, '')} berhasil pada ${UserData.user[`${NomorWA}`].pendaftaran.tanggal} jam ${UserData.user[`${NomorWA}`].pendaftaran.jam}
 ₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋
 Nomor: ${NomorWA.replace('@c.us', '')}
@@ -190,5 +191,57 @@ Tanggal lahir: ${UserData.user[`${NomorWA}`].profile.tgllhr}
 Untuk menggunakan bot silahkan kirim *${prefix}menu*
 Total Pengguna yang telah terdaftar ${jumlahmember}
 `
+        }
+    } else if (RegMed == 'mysql') {
+        const sekolah = UserData[0].sekolah === null
+        if (!sekolah) {
+            const status = UserData[0].status
+            let pgskls = UserData[0].penguruskelas
+            if (status === "Siswa") {
+                (pgskls) ? pgskls = "Pengurus kelas": pgskls = "Bukan Pengurus kelas"
+                return `
+Pendaftaran @${NomorWA.replace(/[@c.us]/g, '')} berhasil pada ${UserData[0].pendaftaran}
+₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋
+Nomor: ${NomorWA.replace('@c.us', '')}
+Nama: ${UserData[0].nama}
+Asal: ${UserData[0].asal}
+Tanggal lahir: ${UserData[0].tgl_lahir}
+Sekolah: ${UserData[0].sekolah}
+Kelas: ${UserData[0].kelas}
+Absen: ${UserData[0].absen}
+Status: ${pgskls}
+
+⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻
+Untuk menggunakan bot silahkan kirim *${prefix}menu*
+Total Pengguna yang telah terdaftar ${mysqlJM}
+`
+            } else if (status === "Guru") {
+                return `
+Pendaftaran @${NomorWA.replace(/[@c.us]/g, '')} berhasil pada ${UserData[0].pendaftaran}
+₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋
+Nomor: ${NomorWA.replace('@c.us', '')}
+Nama: ${UserData[0].nama}
+Asal: ${UserData[0].asal}
+Tanggal lahir: ${UserData[0].tgl_lahir}
+Sekolah: ${UserData[0].sekolah}
+Kelas: ${UserData[0].kelas}
+⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻
+Untuk menggunakan bot silahkan kirim *${prefix}menu*
+Total Pengguna yang telah terdaftar ${mysqlJM}
+`
+            }
+        } else {
+            return `
+Pendaftaran @${NomorWA.replace(/[@c.us]/g, '')} berhasil pada ${UserData[0].pendaftaran}
+₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋₋
+Nomor: ${NomorWA.replace('@c.us', '')}
+Nama: ${UserData[0].nama}
+Asal: ${UserData[0].asal}
+Tanggal lahir: ${UserData[0].tgl_lahir}
+⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻⁻
+Untuk menggunakan bot silahkan kirim *${prefix}menu*
+Total Pengguna yang telah terdaftar ${mysqlJM}
+`
+        }
     }
 }

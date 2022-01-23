@@ -1,13 +1,14 @@
 {
   "WA":{
-    "multiDevice": true,
+    "multiDevice": false,
     "headless": true,
-    "popup": true,
+    "ezqr": true,
+    "popup": false,
     "qrTimeout": 0,
     "authTimeout": 60,
     "cacheEnabled": false,
     "useChrome": true,
-    "hostNotificationLang": "ID_ID",
+    "hostNotificationLang": "id-ID",
     "logConsole": false,
     "killProcessOnBrowserClose": true,
     "throwErrorOnTosBlock": false
@@ -16,9 +17,18 @@
     "owner": "",
     "prefix": ".",
     "GlobalChat": true,
+    "Register": "json",
     "simsimi": false,
     "autoread": true,
-    "delay": 5
+    "delay": 5,
+    "StickerAutoResize": true
+  },
+  "mysql": {
+    "host": "localhost",
+    "user": "root",
+    "password": "",
+    "database": "tesy_bot",
+    "dateStrings": true
   },
   "sticker": {
     "author": false,

@@ -35,3 +35,5 @@
 | OCR |✅|
 | Play |✅|
 | Motivasi |✅|
+| tagall |✅|
+| Sticker Auto Resize |✅|

@@ -4,19 +4,25 @@ const {
     Client
 } = require('@open-wa/wa-automate')
 const {
-    color,
+    msgFilter,
     nocache
 } = require('./util')
 const {
-    WA
+    WA,
+    general
 } = setting = JSON.parse(fs.readFileSync('./settings.json'))
 const OwnerNumber = setting.general.owner + '@c.us'
 const updateJson = require('update-json-file');
 const argsS = process.argv.slice(2)
 
+let db
+if (general.Register == "mysql") {
+    db = require('./lib/db')
+}
+
 const start = (client = new Client()) => {
-    console.log('[DEV]', color('mrijoo', 'green'))
-    console.log('[WEBSITE]', color('mrijoo.net', 'green'))
+    console.log('[DEV]', msgFilter.color('mrijoo', 'green'))
+    console.log('[WEBSITE]', msgFilter.color('mrijoo.net', 'green'))
     console.log('[CLIENT] CLIENT Started!')
 
     client.onAnyMessage((fn) => messageLog(fn.fromMe, fn.type))
@@ -34,7 +40,11 @@ const start = (client = new Client()) => {
 
     client.onMessage((message) => {
         client.getAmountOfLoadedMessages().then((msg) => (msg >= 1000) && client.cutMsgCache())
-        require('./msgHandler')(client, message)
+        if (general.Register == "json") {
+            require('./msgHandler')(client, message)
+        } else if (general.Register == "mysql") {
+            require('./msgHandler')(client, message, db)
+        }
     })
 
     client.onAddedToGroup((chat) => {
@@ -50,10 +60,10 @@ const start = (client = new Client()) => {
         })
 
     client.onPlugged(async (Plugged) => {
-        Plugged ? console.log('[DEVICE]', color('🔌 Charging...', 'lime')) : console.log('[DEVICE]', color('⚡ Discharging!', 'lime'))
+        Plugged ? console.log('[DEVICE]', msgFilter.color('🔌 Charging...', 'lime')) : console.log('[DEVICE]', msgFilter.color('⚡ Discharging!', 'lime'))
         while (Plugged) {
             if (await client.getBatteryLevel() == 100) {
-                console.log('[DEVICE]', color('🔋 Battery Level 100', 'lime'))
+                console.log('[DEVICE]', msgFilter.color('🔋 Battery Level 100', 'lime'))
                 client.sendText(OwnerNumber, 'Battery Level 100')
                 break
             } else {
@@ -69,11 +79,13 @@ if (argsS === undefined) {
 } else {
     session = argsS
 }
+
 nocache(session)
 const options = {
     sessionId: `${session}`,
     multiDevice: WA.multiDevice,
     headless: WA.headless,
+    ezqr: WA.ezqr,
     popup: WA.popup,
     qrTimeout: WA.qrTimeout,
     authTimeout: WA.authTimeout,

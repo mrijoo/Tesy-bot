@@ -1,4 +1,13 @@
 {
-	"sent": {},
-	"receive": {}
+	"sent": {
+		"chat": 538,
+		"document": 2,
+		"sticker": 21,
+		"image": 2,
+		"gp2": 1
+	},
+	"receive": {
+		"chat": 1041,
+		"image": 2
+	}
 }

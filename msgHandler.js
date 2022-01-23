@@ -4,9 +4,10 @@ const {
 } = require('@open-wa/wa-automate')
 const fs = require('fs')
 const got = require('got')
+const sharp = require('sharp')
 const yts = require('yt-search')
-const fetch = require('node-fetch')
 const mathjs = require("mathjs")
+const fetch = require('node-fetch')
 const primbon = require('primbon-scraper')
 const Tesseract = require("tesseract.js")
 const updateJson = require('update-json-file')
@@ -23,14 +24,11 @@ const {
     processTime,
     isUrl
 } = require('./util/msgFilter')
-const {
-    uploadImages
-} = require('./util/fetcher')
 const moment = require('moment-timezone');
 moment.tz.setDefault('Asia/Jakarta').locale('id')
 const botset = JSON.parse(fs.readFileSync('./lib/json/bot.json'))
 
-module.exports = msgHandler = async (client, message) => {
+module.exports = msgHandler = async (client, message, db = undefined) => {
     try {
         const {
             type,
@@ -67,12 +65,11 @@ module.exports = msgHandler = async (client, message) => {
         const {
             langID
         } = require('./message')
-        
         const UserDataJSON = './lib/json/user.json'
         const DataAbsensiJSON = './lib/json/absensi.json'
         let UserData = JSON.parse(fs.readFileSync(UserDataJSON))
         let DataAbsensi = JSON.parse(fs.readFileSync(DataAbsensiJSON))
-        let prefix, SimiPrivate, SimiGrup
+        let prefix, SimiPrivate, SimiGrup, StickerAutoResize, CStickerAutoResize
         let GlobalChat = general.GlobalChat
         let Owner = general.owner
         pushname = pushname || verifiedName || formattedName
@@ -91,73 +88,169 @@ module.exports = msgHandler = async (client, message) => {
         const isImage = type === 'image'
 
         let guruorpgls
-        if (isReg === true) {
-            if (!UserData.user[`${sender.id}`].profile.sekolah === undefined) {
-                guruorpgls = UserData.user[`${sender.id}`].profile.sekolah.status === "Guru" || UserData.user[`${sender.id}`].profile.sekolah.penguruskelas || isOwner
-            } else {
-                guruorpgls = false
+        if (general.Register == "json") {
+            if (isReg === true) {
+                const cks = UserData.user[`${sender.id}`].profile.sekolah === undefined
+                if (!cks) {
+                    guruorpgls = UserData.user[`${sender.id}`].profile.sekolah.status === "Guru" || UserData.user[`${sender.id}`].profile.sekolah.penguruskelas || isOwner
+                } else {
+                    guruorpgls = false
+                }
             }
+
+            if (isReg) {
+                let val = UserData.user[`${sender.id}`].settings.StickerAutoResize === undefined
+                if (val) {
+                    StickerAutoResize = general.StickerAutoResize
+                } else {
+                    StickerAutoResize = UserData.user[`${sender.id}`].settings.StickerAutoResize
+                    CStickerAutoResize = StickerAutoResize
+                }
+            }
+
+            if (isPrivate) {
+                let val = isReg === 'pending'
+                if (isReg && !val) {
+                    val = UserData.user[`${sender.id}`].settings.prefix === undefined
+                    if (val) {
+                        prefix = general.prefix
+                    } else {
+                        prefix = UserData.user[`${sender.id}`].settings.prefix
+                    }
+                    val = UserData.user[`${sender.id}`].settings.simi === undefined
+                    if (!val) {
+                        SimiPrivate = UserData.user[`${sender.id}`].settings.simi
+                    }
+                } else {
+                    prefix = general.prefix
+                }
+            } else if (isGroupMsg) {
+                let val = isReg === 'pending'
+                if (UserData.grup[`${chatId}`] === undefined) {
+                    updateJson(UserDataJSON, (data) => {
+                            data.grup[`${chatId}`] = {
+                                pendaftaran: 'belum',
+                                sekolah: {},
+                                settings: {}
+                            }
+                            return data
+                        })
+                        .then(() => {
+                            if (isReg && !val) {
+                                UserData = JSON.parse(fs.readFileSync(UserDataJSON))
+                                val = UserData.grup[`${chatId}`].settings.prefix === undefined
+                                if (val) {
+                                    prefix = general.prefix
+                                } else {
+                                    prefix = UserData.grup[`${chatId}`].settings.prefix
+                                }
+                                val = UserData.grup[`${chatId}`].settings.simi === undefined
+                                if (!val) {
+                                    SimiGrup = UserData.grup[`${chatId}`].settings.simi
+                                }
+                            } else {
+                                prefix = general.prefix
+                            }
+                        })
+                        .catch(error => console.error(error))
+                } else if (isReg && !val) {
+                    UserData = JSON.parse(fs.readFileSync(UserDataJSON))
+                    val = UserData.grup[`${chatId}`].settings.prefix === undefined
+                    if (val) {
+                        prefix = general.prefix
+                    } else {
+                        prefix = UserData.grup[`${chatId}`].settings.prefix
+                    }
+                    val = UserData.grup[`${chatId}`].settings.simi === undefined
+                    if (!val) {
+                        SimiGrup = UserData.grup[`${chatId}`].settings.simi
+                    }
+                } else {
+                    prefix = general.prefix
+                }
+            }
+        } else if (general.Register == "mysql") {
+            const DBRPGS = async (db) => new Promise((resolve, reject) => {
+                db.query(`SELECT penguruskelas FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                    val = result[0].penguruskelas === null
+                    if (val) {
+                        resolve(false)
+                    } else {
+                        resolve(result[0].penguruskelas)
+                    }
+                })
+            })
+            if (isReg === true) {
+                guruorpgls = await DBRPGS(db)
+            }
+
+            const DBR = async (db) => new Promise((resolve, reject) => {
+                if (isPrivate) {
+                    let val = isReg === 'pending'
+                    if (isReg && !val) {
+                        db.query(`SELECT prefix FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                            val = result[0].prefix === null
+                            if (val) {
+                                resolve(general.prefix)
+                            } else {
+                                resolve(result[0].prefix)
+                            }
+                        })
+                    } else {
+                        resolve(general.prefix)
+                    }
+                } else if (isGroupMsg) {
+                    let val = isReg === 'pending'
+                    if (isReg && !val) {
+                        db.query(`SELECT prefix FROM grup WHERE grup_id=${chatId.replace(/[@g.us]/g, '')}`, function (err, result, fields) {
+                            val = result[0].prefix === null
+                            if (val) {
+                                resolve(general.prefix)
+                            } else {
+                                resolve(result[0].prefix)
+                            }
+                        })
+                    } else {
+                        resolve(general.prefix)
+                    }
+                }
+            })
+            prefix = await DBR(db)
+        } else {
+            prefix = general.prefix
         }
 
-        if (isPrivate) {
-            let val = isReg === 'pending'
-            if (isReg && !val) {
-                val = UserData.user[`${sender.id}`].settings.prefix === undefined
-                if (val) {
-                    prefix = general.prefix
-                } else {
-                    prefix = UserData.user[`${sender.id}`].settings.prefix
-                }
-                val = UserData.user[`${sender.id}`].settings.simi === undefined
-                if (!val) {
-                    SimiPrivate = UserData.user[`${sender.id}`].settings.simi
-                }
-            } else {
-                prefix = general.prefix
+        if (general.Register == "mysql") {
+            const DBSPR = async (db) => new Promise((resolve, reject) => {
+                db.query(`SELECT simi FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                    result[0].simi === null ? resolve(false) : resolve(result[0].simi)
+                })
+            })
+
+            const DBSGR = async (db) => new Promise((resolve, reject) => {
+                db.query(`SELECT simi FROM grup WHERE grup_id=${chatId.replace(/[@g.us]/g, '')}`, function (err, result, fields) {
+                    result[0].simi === null ? resolve(false) : resolve(result[0].simi)
+                })
+            })
+            if (isPrivate) {
+                SimiPrivate = await DBSPR(db)
+            } else if (isGroupMsg) {
+                SimiGrup = await DBSGR(db)
             }
-        } else if (isGroupMsg) {
-            let val = isReg === 'pending'
-            if (UserData.grup[`${chatId}`] === undefined) {
-                updateJson(UserDataJSON, (data) => {
-                        data.grup[`${chatId}`] = {
-                            pendaftaran: 'belum',
-                            sekolah: {},
-                            settings: {}
-                        }
-                        return data
-                    })
-                    .then(() => {
-                        if (isReg && !val) {
-                            UserData = JSON.parse(fs.readFileSync(UserDataJSON))
-                            val = UserData.grup[`${chatId}`].settings.prefix === undefined
-                            if (val) {
-                                prefix = general.prefix
-                            } else {
-                                prefix = UserData.grup[`${chatId}`].settings.prefix
-                            }
-                            val = UserData.grup[`${chatId}`].settings.simi === undefined
-                            if (!val) {
-                                SimiGrup = UserData.grup[`${chatId}`].settings.simi
-                            }
-                        } else {
-                            prefix = general.prefix
-                        }
-                    })
-                    .catch(error => console.error(error))
-            } else if (isReg && !val) {
-                UserData = JSON.parse(fs.readFileSync(UserDataJSON))
-                val = UserData.grup[`${chatId}`].settings.prefix === undefined
-                if (val) {
-                    prefix = general.prefix
+
+            const DBRSAR = async (db) => new Promise((resolve, reject) => {
+                db.query(`SELECT StickerAutoResize FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                    result[0].StickerAutoResize === null ? resolve(null) : resolve(result[0].StickerAutoResize)
+                })
+            })
+
+            if (isReg) {
+                if (await DBRSAR(db) == null) {
+                    StickerAutoResize = general.StickerAutoResize
                 } else {
-                    prefix = UserData.grup[`${chatId}`].settings.prefix
+                    StickerAutoResize = await DBRSAR(db)
+                    CStickerAutoResize = StickerAutoResize
                 }
-                val = UserData.grup[`${chatId}`].settings.simi === undefined
-                if (!val) {
-                    SimiGrup = UserData.grup[`${chatId}`].settings.simi
-                }
-            } else {
-                prefix = general.prefix
             }
         }
 
@@ -234,6 +327,18 @@ module.exports = msgHandler = async (client, message) => {
             }
         }
 
+        const imgresize = async (base64, mime_type = "png", width = 512, height = 512) => new Promise((resolve, reject) => {
+            sharp(Buffer.from(base64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/)[2], 'base64'))
+                .resize(width, height, {
+                    fit: 'fill'
+                })
+                .png()
+                .toBuffer()
+                .then(data => {
+                    resolve(`data:${mime_type};base64,${Buffer.from(data).toString('base64')}`)
+                })
+        })
+
         const isMuted = (chatId) => {
             if (botset.includes(chatId)) {
                 return false
@@ -281,555 +386,823 @@ module.exports = msgHandler = async (client, message) => {
 
         async function ValReg() {
             let reg = false
-            if (UserData.user === undefined && UserData.grup === undefined) {
-                updateJson(UserDataJSON, (data) => {
-                        data = {
-                            user: {},
-                            grup: {}
-                        }
-                        return data
-                    })
-                    .then(() => {
-                        updateJson(UserDataJSON, (data) => {
-                                data.user[`${sender.id}`] = {
-                                    pendaftaran: 'belum'
-                                }
-                                return data
-                            })
-                            .then(() => {
-                                reg = false
-                            })
-                            .catch(error => console.error(error))
-                    })
-                    .catch(error => console.error(error))
-            } else if (UserData.user[`${sender.id}`] === undefined) {
-                updateJson(UserDataJSON, (data) => {
-                        data.user[`${sender.id}`] = {
-                            pendaftaran: 'belum'
-                        }
-                        return data
-                    })
-                    .then(() => {
-                        reg = false
-                    })
-                    .catch(error => console.error(error))
-            } else if (UserData.user[`${sender.id}`].pendaftaran === 'belum') {
-                reg = false
-            } else if (UserData.user[`${sender.id}`].pendaftaran === 'pending') {
-                reg = 'pending'
-            } else {
-                const val = UserData.user[`${sender.id}`].profile.nama === undefined && UserData.user[`${sender.id}`].profile.asal === undefined && UserData.user[`${sender.id}`].profile.tgllhr === undefined
-                if (!val) return reg = true
-            }
-            return reg
-        }
-
-        async function ValRegGRUP() {
-            let reg = false
-            if (isPrivate) return reg = false
-            if (UserData.user === undefined && UserData.grup === undefined) {
-                updateJson(UserDataJSON, (data) => {
-                        data = {
-                            user: {},
-                            grup: {}
-                        }
-                        return data
-                    })
-                    .then(() => {
-                        updateJson(UserDataJSON, (data) => {
-                                data.grup[`${chatId}`].pendaftaran = {
-                                    pendaftaran: 'belum',
-                                    sekolah: {},
-                                    settings: {}
-                                }
-                                return data
-                            })
-                            .then(() => {
-                                reg = false
-                            })
-                            .catch(error => console.error(error))
-                    })
-                    .catch(error => console.error(error))
-            } else if (UserData.grup[`${chatId}`] === undefined) {
-                updateJson(UserDataJSON, (data) => {
-                        data.grup[`${chatId}`] = {
-                            pendaftaran: 'belum',
-                            sekolah: {},
-                            settings: {}
-                        }
-                        return data
-                    })
-                    .then(() => {
-                        reg = false
-                    })
-                    .catch(error => console.error(error))
-            } else if (UserData.grup[`${chatId}`].pendaftaran === 'belum') {
-                reg = false
-            } else if (UserData.grup[`${chatId}`].pendaftaran === 'pending') {
-                reg = 'pending'
-            } else {
-                const val = UserData.grup[`${chatId}`].sekolah.nama === undefined && UserData.grup[`${chatId}`].sekolah.kelas === undefined && UserData.grup[`${chatId}`].sekolah.jumlahsiswa === undefined
-                if (!val) return reg = true
-            }
-            return reg
-        }
-
-        async function Daftar() {
-            const emoji = /(?:[\u2700-\u27bf]|(?:\ud83c[\udde6-\uddff]){2}|[\ud800-\udbff][\udc00-\udfff]|[\u0023-\u0039]\ufe0f?\u20e3|\u3299|\u3297|\u303d|\u3030|\u24c2|\ud83c[\udd70-\udd71]|\ud83c[\udd7e-\udd7f]|\ud83c\udd8e|\ud83c[\udd91-\udd9a]|\ud83c[\udde6-\uddff]|\ud83c[\ude01-\ude02]|\ud83c\ude1a|\ud83c\ude2f|\ud83c[\ude32-\ude3a]|\ud83c[\ude50-\ude51]|\u203c|\u2049|[\u25aa-\u25ab]|\u25b6|\u25c0|[\u25fb-\u25fe]|\u00a9|\u00ae|\u2122|\u2139|\ud83c\udc04|[\u2600-\u26FF]|\u2b05|\u2b06|\u2b07|\u2b1b|\u2b1c|\u2b50|\u2b55|\u231a|\u231b|\u2328|\u23cf|[\u23e9-\u23f3]|[\u23f8-\u23fa]|\ud83c\udccf|\u2934|\u2935|[\u2190-\u21ff])/g;
-            UserData = JSON.parse(fs.readFileSync(UserDataJSON))
-            const isi = chats.toLowerCase()
-            if (isPrivate) {
-                if (isReg === true) return client.reply(from, langID.isReg(), id)
-                if (isMedia) return client.reply(from, "Silakan isi dengan benar", id)
-                if (type === 'sticker') return client.reply(from, "Silakan isi dengan benar", id)
-                if (emoji.test(chats)) return client.reply(from, "Silakan isi dengan benar", id)
-                const validasi = await client.checkNumberStatus(sender.id)
-                if (UserData.user === undefined) {
-                    if (!validasi.canReceiveMessage) return client.reply(from, 'Nomor WhatsApp tidak valid [ Tidak terdaftar di WhatsApp ]', id)
+            if (general.Register == "json") {
+                if (UserData.user === undefined && UserData.grup === undefined) {
                     updateJson(UserDataJSON, (data) => {
                             data = {
                                 user: {},
                                 grup: {}
                             }
+                            return data
+                        })
+                        .then(() => {
+                            updateJson(UserDataJSON, (data) => {
+                                    data.user[`${sender.id}`] = {
+                                        pendaftaran: 'belum'
+                                    }
+                                    return data
+                                })
+                                .then(() => {
+                                    reg = false
+                                })
+                                .catch(error => console.error(error))
+                        })
+                        .catch(error => console.error(error))
+                } else if (UserData.user[`${sender.id}`] === undefined) {
+                    updateJson(UserDataJSON, (data) => {
                             data.user[`${sender.id}`] = {
-                                pendaftaran: 'pending',
-                                profile: {},
-                                settings: {}
+                                pendaftaran: 'belum'
                             }
                             return data
                         })
                         .then(() => {
-                            client.sendText(from, 'Silakan jawab dengan benar. jawab batal jika ingin membatalkan pendaftaran', id)
-                            client.sendText(from, 'Nama mu?', id)
+                            reg = false
                         })
                         .catch(error => console.error(error))
-                } else if (UserData.user[`${sender.id}`] === undefined || UserData.user[`${sender.id}`].pendaftaran === 'belum') {
-                    if (!validasi.canReceiveMessage) return client.reply(from, 'Nomor WhatsApp tidak valid [ Tidak terdaftar di WhatsApp ]', id)
-                    updateJson(UserDataJSON, (data) => {
-                            data.user[`${sender.id}`] = {
-                                pendaftaran: 'pending',
-                                profile: {},
-                                settings: {}
-                            }
-                            return data
-                        })
-                        .then(() => {
-                            client.sendText(from, 'Silakan jawab dengan benar. jawab *batal* jika ingin membatalkan pendaftaran', id)
-                            client.sendText(from, 'Nama mu?', id)
-                        })
-                        .catch(error => console.error(error))
-                } else if (isi === "batal") {
-                    updateJson(UserDataJSON, (data) => {
-                            delete data.user[`${sender.id}`]
-                            return data
-                        })
-                        .then(() => {
-                            client.sendText(from, 'Pendaftaran telah dibatalkan', id)
-                        })
-                        .catch(error => console.error(error))
-                } else if (UserData.user[`${sender.id}`].profile.nama === undefined) {
-                    updateJson(UserDataJSON, (data) => {
-                            data.user[`${sender.id}`].profile.nama = chats
-                            return data
-                        })
-                        .then(() => {
-                            client.sendText(from, 'Asal?', id)
-                        })
-                        .catch(error => console.error(error))
-                } else if (UserData.user[`${sender.id}`].profile.asal === undefined) {
-                    updateJson(UserDataJSON, (data) => {
-                            data.user[`${sender.id}`].profile.asal = chats
-                            return data
-                        })
-                        .then(() => {
-                            client.sendText(from, 'Tanggal lahir mu? tahun/bulan/tanggal', id)
-                        })
-                        .catch(error => console.error(error))
-                } else if (UserData.user[`${sender.id}`].profile.tgllhr === undefined) {
-                    if (!chats.match(/^((19|20)\d{2})\/(0[1-9]|1[0-2])\/(0[1-9]|1\d|2\d|3[01])$/)) return client.reply(from, 'Silakan tulis dengan format yang benar. contoh *2000/01/15*', id)
-                    updateJson(UserDataJSON, (data) => {
-                            data.user[`${sender.id}`].profile.tgllhr = chats
-                            return data
-                        })
-                        .then(async () => {
-                            const umur = await getAge(chats)
-                            if (umur <= 30) {
-                                updateJson(UserDataJSON, (data) => {
-                                        data.user[`${sender.id}`].profile.sekolah = 'pending'
-                                        return data
-                                    })
-                                    .then(() => {
-                                        client.sendText(from, "Apakah kamu masih sekolah? jika iya jawab *ya* jika tidak jawab *tidak*", id)
-                                    })
-                                    .catch(error => console.error(error))
-                            } else if (umur <= 75) {
-                                updateJson(UserDataJSON, (data) => {
-                                        data.user[`${sender.id}`].profile.sekolah = 'pending'
-                                        return data
-                                    })
-                                    .then(() => {
-                                        client.sendText(from, "Apakah profesi anda guru? jika iya jawab *ya* jika tidak jawab *tidak*", id)
-                                    })
-                                    .catch(error => console.error(error))
-                            } else {
-                                updateJson(UserDataJSON, (data) => {
-                                        data.user[`${sender.id}`].pendaftaran = {
-                                            tanggal: `${moment().format('DD/MM/YYYY')}`,
-                                            jam: `${moment().format('HH:mm:ss')}`
-                                        }
-                                        return data
-                                    })
-                                    .then(() => {
-                                        UserData = JSON.parse(fs.readFileSync(UserDataJSON))
-                                        client.sendTextWithMentions(from, langID.textReg(sender.id, UserData, prefix), id)
-                                    })
-                            }
-                        })
-                        .catch(error => console.error(error))
-                } else if (UserData.user[`${sender.id}`].profile.sekolah === 'pending') {
-                    const umur = await getAge(UserData.user[`${sender.id}`].profile.tgllhr)
-                    if (umur <= 30) {
-                        if (isi == 'ya') {
-                            updateJson(UserDataJSON, (data) => {
-                                    data.user[`${sender.id}`].profile.sekolah = {
-                                        status: "Siswa"
-                                    }
-                                    return data
-                                })
-                                .then(() => {
-                                    client.sendText(from, 'Nama Sekolah mu?', id)
-                                })
-                                .catch(error => console.error(error))
-                        } else if (isi == 'guru') {
-                            updateJson(UserDataJSON, (data) => {
-                                    data.user[`${sender.id}`].profile.sekolah = {
-                                        status: "Guru"
-                                    }
-                                    return data
-                                })
-                                .then(() => {
-                                    client.sendText(from, 'Nama Sekolah anda mengajar?', id)
-                                })
-                                .catch(error => console.error(error))
-                        } else if (isi == 'tidak') {
-                            delete UserData.user[`${sender.id}`].profile.sekolah
-                            fs.writeFile("./lib/json/user.json", JSON.stringify(UserData, null, 4), function (err) {
-                                if (err) throw err;
-                                updateJson(UserDataJSON, (data) => {
-                                        data.user[`${sender.id}`].pendaftaran = {
-                                            tanggal: `${moment().format('DD/MM/YYYY')}`,
-                                            jam: `${moment().format('HH:mm:ss')}`
-                                        }
-                                        return data
-                                    })
-                                    .then(() => {
-                                        UserData = JSON.parse(fs.readFileSync(UserDataJSON))
-                                        client.sendTextWithMentions(from, langID.textReg(sender.id, UserData, prefix), id)
-                                    })
-                            })
-                        } else {
-                            client.sendText(from, 'ya/tidak', id)
-                        }
-                    } else {
-                        if (isi == 'ya') {
-                            updateJson(UserDataJSON, (data) => {
-                                    data.user[`${sender.id}`].profile.sekolah = {
-                                        status: "Guru"
-                                    }
-                                    return data
-                                })
-                                .then(() => {
-                                    client.sendText(from, 'Nama Sekolah anda mengajar?', id)
-                                })
-                                .catch(error => console.error(error))
-                        } else if (isi == 'tidak') {
-                            delete UserData.user[`${sender.id}`].profile.sekolah
-                            fs.writeFile("./lib/json/user.json", JSON.stringify(UserData, null, 4), function (err) {
-                                if (err) throw err;
-                                updateJson(UserDataJSON, (data) => {
-                                        data.user[`${sender.id}`].pendaftaran = {
-                                            tanggal: `${moment().format('DD/MM/YYYY')}`,
-                                            jam: `${moment().format('HH:mm:ss')}`
-                                        }
-                                        return data
-                                    })
-                                    .then(() => {
-                                        UserData = JSON.parse(fs.readFileSync(UserDataJSON))
-                                        client.sendTextWithMentions(from, langID.textReg(sender.id, UserData, prefix), id)
-                                    })
-                                    .catch(error => console.error(error))
-                            })
-                        } else {
-                            client.sendText(from, 'ya/tidak', id)
-                        }
-                    }
-                } else if (UserData.user[`${sender.id}`].profile.sekolah.status === 'Siswa') {
-                    if (UserData.user[`${sender.id}`].profile.sekolah.nama === undefined) {
-                        updateJson(UserDataJSON, (data) => {
-                                data.user[`${sender.id}`].profile.sekolah.nama = chats
-                                return data
-                            })
-                            .then(() => {
-                                client.sendText(from, 'Kelas mu?', id)
-                            })
-                            .catch(error => console.error(error))
-                    } else if (UserData.user[`${sender.id}`].profile.sekolah.kelas === undefined) {
-                        updateJson(UserDataJSON, (data) => {
-                                data.user[`${sender.id}`].profile.sekolah.kelas = chats
-                                return data
-                            })
-                            .then(() => {
-                                client.sendText(from, 'Absen mu?', id)
-                            })
-                            .catch(error => console.error(error))
-                    } else if (UserData.user[`${sender.id}`].profile.sekolah.absen === undefined) {
-                        if (isNaN(chats)) return await client.reply(from, 'Absen harus berupa angka!!', id)
-                        updateJson(UserDataJSON, (data) => {
-                                data.user[`${sender.id}`].profile.sekolah.absen = Number(chats)
-                                return data
-                            })
-                            .then(() => {
-                                client.sendText(from, 'Apakah kamu pengurus kelas? jika iya jawab ya jika tidak jawab tidak')
-                            })
-                            .catch(error => console.error(error))
-                    } else if (UserData.user[`${sender.id}`].profile.sekolah.penguruskelas === undefined) {
-                        if (isi == 'ya') {
-                            updateJson(UserDataJSON, (data) => {
-                                    data.user[`${sender.id}`].profile.sekolah.penguruskelas = true
-                                    return data
-                                })
-                                .then(() => {
-                                    updateJson(UserDataJSON, (data) => {
-                                            data.user[`${sender.id}`].pendaftaran = {
-                                                tanggal: `${moment().format('DD/MM/YYYY')}`,
-                                                jam: `${moment().format('HH:mm:ss')}`
-                                            }
-                                            return data
-                                        })
-                                        .then(() => {
-                                            UserData = JSON.parse(fs.readFileSync(UserDataJSON))
-                                            client.sendTextWithMentions(from, langID.textReg(sender.id, UserData, prefix, true), id)
-                                        })
-                                })
-                                .catch(error => console.error(error))
-                        } else if (isi == 'tidak') {
-                            updateJson(UserDataJSON, (data) => {
-                                    data.user[`${sender.id}`].profile.sekolah.penguruskelas = false
-                                    return data
-                                })
-                                .then(() => {
-                                    updateJson(UserDataJSON, (data) => {
-                                            data.user[`${sender.id}`].pendaftaran = {
-                                                tanggal: `${moment().format('DD/MM/YYYY')}`,
-                                                jam: `${moment().format('HH:mm:ss')}`
-                                            }
-                                            return data
-                                        })
-                                        .then(() => {
-                                            UserData = JSON.parse(fs.readFileSync(UserDataJSON))
-                                            client.sendTextWithMentions(from, langID.textReg(sender.id, UserData, prefix, true), id)
-                                        })
-                                })
-                                .catch(error => console.error(error))
-                        } else {
-                            client.reply(from, 'ya atau tidak?', id)
-                        }
-                    }
-                } else if (UserData.user[`${sender.id}`].profile.sekolah.status === 'Guru') {
-                    if (UserData.user[`${sender.id}`].profile.sekolah.nama === undefined) {
-                        updateJson(UserDataJSON, (data) => {
-                                data.user[`${sender.id}`].profile.sekolah.nama = chats
-                                data.user[`${sender.id}`].profile.sekolah.pkelas = true
-                                data.user[`${sender.id}`].profile.sekolah.kelas = []
-                                return data
-                            })
-                            .then(() => {
-                                client.sendText(from, 'Kelas anda mengajar? isikan satu persatu', id)
-                            })
-                            .catch(error => console.error(error))
-                    } else if (UserData.user[`${sender.id}`].profile.sekolah.pkelas) {
-                        if (isi === 'sudah') {
-                            if (UserData.user[`${sender.id}`].profile.sekolah.kelas.length === 0) return client.reply(from, "??", id)
-                            updateJson(UserDataJSON, (data) => {
-                                    delete data.user[`${sender.id}`].profile.sekolah.pkelas
-                                    data.user[`${sender.id}`].pendaftaran = {
-                                        tanggal: `${moment().format('DD/MM/YYYY')}`,
-                                        jam: `${moment().format('HH:mm:ss')}`
-                                    }
-                                    return data
-                                })
-                                .then(() => {
-                                    UserData = JSON.parse(fs.readFileSync(UserDataJSON))
-                                    client.sendTextWithMentions(from, langID.textReg(sender.id, UserData, prefix), id)
-                                })
-                                .catch(error => console.error(error))
-                        } else if (isi === 'list') {
-                            const array = UserData.user[`${sender.id}`].profile.sekolah.kelas
-                            let no = 0,
-                                kelas = "List kelas\n"
-                            array.forEach(element => {
-                                no++
-                                kelas += `${no}. *${element}*\n`
-                            })
-                            client.reply(from, kelas, id)
-                        } else if (isi.includes('hapus')) {
-                            const kelas = isi.slice(6)
-                            const getkelas = UserData.user[`${sender.id}`].profile.sekolah.kelas.indexOf(kelas)
-                            if (getkelas === -1) return client.reply(from, `Kelas *${kelas}* tidak ada`, id)
-                            updateJson(UserDataJSON, (data) => {
-                                    data.user[`${sender.id}`].profile.sekolah.kelas.splice(getkelas, 1)
-                                    return data
-                                })
-                                .then(() => {
-                                    client.sendText(from, `Kelas *${kelas}* telah terhapus`, id)
-                                })
-                                .catch(error => console.error(error))
-                        } else {
-                            updateJson(UserDataJSON, (data) => {
-                                    data.user[`${sender.id}`].profile.sekolah.kelas.push(isi)
-                                    return data
-                                })
-                                .then(() => {
-                                    client.sendText(from, 'Ada lagi? Jika sudah semua jawab dengan sudah', id)
-                                })
-                                .catch(error => console.error(error))
-                        }
-                    }
+                } else if (UserData.user[`${sender.id}`].pendaftaran === 'belum') {
+                    reg = false
+                } else if (UserData.user[`${sender.id}`].pendaftaran === 'pending') {
+                    reg = 'pending'
+                } else {
+                    const val = UserData.user[`${sender.id}`].profile.nama === undefined && UserData.user[`${sender.id}`].profile.asal === undefined && UserData.user[`${sender.id}`].profile.tgllhr === undefined
+                    if (!val) return reg = true
                 }
-            } else if (isGroupMsg) { // group daftar
-                if (!isGroupAdmins || !isOwner) return
-                if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
-                if (UserData.user[`${sender.id}`].pendaftaran === 'pending') return console.log("Pending")
-                if (isRegGrup === true) return client.reply(from, 'Grup sudah terdaftar', id)
-                if (UserData.grup[chatId].pendaftaran === undefined || UserData.grup[chatId].pendaftaran === 'belum') {
+                return reg
+            } else if (general.Register == "mysql") {
+                const DBR = async (db) => new Promise((resolve, reject) => {
+                    db.query(`SELECT * FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                        if (result.length === 0) {
+                            db.query(`INSERT INTO user (no_hp, status_pendaftaran) VALUES (${sender.id.replace(/[@c.us]/g, '')}, 'belum')`, function (err, result, fields) {
+                                resolve(false)
+                            })
+                        } else if (result[0].status_pendaftaran === 'belum') {
+                            resolve(false)
+                        } else if (result[0].status_pendaftaran === 'pending') {
+                            resolve('pending')
+                        } else {
+                            const val = result[0].nama === null && result[0].asal === null && result[0].tgllhr === null
+                            if (!val) return resolve(true)
+                        }
+                    })
+                })
+                if (isGroupMsg) {
+                    db.query(`SELECT * FROM grup WHERE grup_id=${chatId.replace(/[@g.us]/g, '')}`, function (err, result, fields) {
+                        if (result.length === 0) {
+                            db.query(`INSERT INTO grup (grup_id, status_pendaftaran) VALUES (${chatId.replace(/[@g.us]/g, '')}, 'belum')`, function (err, result, fields) {})
+                        }
+                    })
+                }
+                reg = await DBR(db)
+                return reg
+            }
+        }
+
+        async function ValRegGRUP() {
+            let reg = false
+            if (general.Register == "json") {
+                if (isPrivate) return reg = false
+                if (UserData.user === undefined && UserData.grup === undefined) {
                     updateJson(UserDataJSON, (data) => {
-                            data.grup[chatId].pendaftaran = "pending"
-                            data.grup[chatId].sekolah = {}
-                            return data
-                        })
-                        .then(() => {
-                            client.sendText(from, 'Silakan jawab dengan benar. jawab batal jika ingin membatalkan pendaftaran', id)
-                            client.sendText(from, 'Nama Sekolah?', id)
-                        })
-                        .catch(error => console.error(error))
-                } else if (isi === "batal") {
-                    updateJson(UserDataJSON, (data) => {
-                            delete data.grup[chatId]
-                            return data
-                        })
-                        .then(() => {
-                            client.sendText(from, 'Pendaftaran telah dibatalkan', id)
-                        })
-                        .catch(error => console.error(error))
-                } else if (UserData.grup[chatId].sekolah.nama === undefined) {
-                    updateJson(UserDataJSON, (data) => {
-                            data.grup[`${chatId}`].sekolah.nama = chats
-                            return data
-                        })
-                        .then(() => {
-                            client.sendText(from, 'Kelas?', id)
-                        })
-                        .catch(error => console.error(error))
-                } else if (UserData.grup[chatId].sekolah.kelas === undefined) {
-                    updateJson(UserDataJSON, (data) => {
-                            data.grup[`${chatId}`].sekolah.kelas = chats
-                            return data
-                        })
-                        .then(() => {
-                            client.sendText(from, 'Jumlah Siswa?', id)
-                        })
-                        .catch(error => console.error(error))
-                } else if (UserData.grup[chatId].sekolah.jumlahsiswa === undefined) {
-                    if (isNaN(chats)) return await client.reply(from, 'Jumlah Siswa harus berupa angka!!', id)
-                    updateJson(UserDataJSON, (data) => {
-                            data.grup[`${chatId}`].sekolah.jumlahsiswa = chats
+                            data = {
+                                user: {},
+                                grup: {}
+                            }
                             return data
                         })
                         .then(() => {
                             updateJson(UserDataJSON, (data) => {
                                     data.grup[`${chatId}`].pendaftaran = {
-                                        tanggal: `${moment().format('DD/MM/YYYY')}`,
-                                        jam: `${moment().format('HH:mm:ss')}`
+                                        pendaftaran: 'belum',
+                                        sekolah: {},
+                                        settings: {}
                                     }
                                     return data
                                 })
                                 .then(() => {
+                                    reg = false
+                                })
+                                .catch(error => console.error(error))
+                        })
+                        .catch(error => console.error(error))
+                } else if (UserData.grup[`${chatId}`] === undefined) {
+                    updateJson(UserDataJSON, (data) => {
+                            data.grup[`${chatId}`] = {
+                                pendaftaran: 'belum',
+                                sekolah: {},
+                                settings: {}
+                            }
+                            return data
+                        })
+                        .then(() => {
+                            reg = false
+                        })
+                        .catch(error => console.error(error))
+                } else if (UserData.grup[`${chatId}`].pendaftaran === 'belum') {
+                    reg = false
+                } else if (UserData.grup[`${chatId}`].pendaftaran === 'pending') {
+                    reg = 'pending'
+                } else {
+                    const val = UserData.grup[`${chatId}`].sekolah.nama === undefined && UserData.grup[`${chatId}`].sekolah.kelas === undefined && UserData.grup[`${chatId}`].sekolah.jumlahsiswa === undefined
+                    if (!val) return reg = true
+                }
+                return reg
+            } else if (general.Register == "mysql") {
+                if (isPrivate) return reg = false
+                const DBR = async (db) => new Promise((resolve, reject) => {
+                    db.query(`SELECT * FROM grup WHERE grup_id=${chatId.replace(/[@g.us]/g, '')}`, function (err, result, fields) {
+                        if (result[0] === 0) {
+                            db.query(`INSERT INTO grup (grup_id, status_pendaftaran) VALUES (${chatId.replace(/[@g.us]/g, '')}, 'belum')`, function (err, result, fields) {
+                                resolve(false)
+                            })
+                        } else if (result[0].status_pendaftaran === 'belum') {
+                            resolve(false)
+                        } else if (result[0].status_pendaftaran === 'pending') {
+                            resolve('pending')
+                        } else {
+                            const val = result[0].sekolah === null && result[0].kelas === null && result[0].jumlahsiswa === null
+                            if (!val) return resolve(true)
+                        }
+                    })
+                })
+                reg = await DBR(db)
+                return reg
+            }
+        }
+
+        async function Daftar() {
+            const emoji = /(?:[\u2700-\u27bf]|(?:\ud83c[\udde6-\uddff]){2}|[\ud800-\udbff][\udc00-\udfff]|[\u0023-\u0039]\ufe0f?\u20e3|\u3299|\u3297|\u303d|\u3030|\u24c2|\ud83c[\udd70-\udd71]|\ud83c[\udd7e-\udd7f]|\ud83c\udd8e|\ud83c[\udd91-\udd9a]|\ud83c[\udde6-\uddff]|\ud83c[\ude01-\ude02]|\ud83c\ude1a|\ud83c\ude2f|\ud83c[\ude32-\ude3a]|\ud83c[\ude50-\ude51]|\u203c|\u2049|[\u25aa-\u25ab]|\u25b6|\u25c0|[\u25fb-\u25fe]|\u00a9|\u00ae|\u2122|\u2139|\ud83c\udc04|[\u2600-\u26FF]|\u2b05|\u2b06|\u2b07|\u2b1b|\u2b1c|\u2b50|\u2b55|\u231a|\u231b|\u2328|\u23cf|[\u23e9-\u23f3]|[\u23f8-\u23fa]|\ud83c\udccf|\u2934|\u2935|[\u2190-\u21ff])/g;
+            const isi = chats.toLowerCase()
+            if (general.Register == "json") {
+                UserData = JSON.parse(fs.readFileSync(UserDataJSON))
+                if (isPrivate) {
+                    if (isReg === true) return client.reply(from, langID.isReg(), id)
+                    if (isMedia) return client.reply(from, "Silakan isi dengan benar", id)
+                    if (type === 'sticker') return client.reply(from, "Silakan isi dengan benar", id)
+                    if (emoji.test(chats)) return client.reply(from, "Silakan isi dengan benar", id)
+                    const validasi = await client.checkNumberStatus(sender.id)
+                    if (UserData.user === undefined) {
+                        if (!validasi.canReceiveMessage) return client.reply(from, 'Nomor WhatsApp tidak valid [ Tidak terdaftar di WhatsApp ]', id)
+                        updateJson(UserDataJSON, (data) => {
+                                data = {
+                                    user: {},
+                                    grup: {}
+                                }
+                                data.user[`${sender.id}`] = {
+                                    pendaftaran: 'pending',
+                                    profile: {},
+                                    settings: {}
+                                }
+                                return data
+                            })
+                            .then(() => {
+                                client.sendText(from, 'Silakan jawab dengan benar. jawab *batal* jika ingin membatalkan pendaftaran', id)
+                                client.sendText(from, 'Nama mu?', id)
+                            })
+                            .catch(error => console.error(error))
+                    } else if (UserData.user[`${sender.id}`] === undefined || UserData.user[`${sender.id}`].pendaftaran === 'belum') {
+                        if (!validasi.canReceiveMessage) return client.reply(from, 'Nomor WhatsApp tidak valid [ Tidak terdaftar di WhatsApp ]', id)
+                        updateJson(UserDataJSON, (data) => {
+                                data.user[`${sender.id}`] = {
+                                    pendaftaran: 'pending',
+                                    profile: {},
+                                    settings: {}
+                                }
+                                return data
+                            })
+                            .then(() => {
+                                client.sendText(from, 'Silakan jawab dengan benar. jawab *batal* jika ingin membatalkan pendaftaran', id)
+                                client.sendText(from, 'Nama mu?', id)
+                            })
+                            .catch(error => console.error(error))
+                    } else if (isi === "batal") {
+                        updateJson(UserDataJSON, (data) => {
+                                delete data.user[`${sender.id}`]
+                                return data
+                            })
+                            .then(() => {
+                                client.sendText(from, 'Pendaftaran telah dibatalkan', id)
+                            })
+                            .catch(error => console.error(error))
+                    } else if (UserData.user[`${sender.id}`].profile.nama === undefined) {
+                        updateJson(UserDataJSON, (data) => {
+                                data.user[`${sender.id}`].profile.nama = chats
+                                return data
+                            })
+                            .then(() => {
+                                client.sendText(from, 'Asal?', id)
+                            })
+                            .catch(error => console.error(error))
+                    } else if (UserData.user[`${sender.id}`].profile.asal === undefined) {
+                        updateJson(UserDataJSON, (data) => {
+                                data.user[`${sender.id}`].profile.asal = chats
+                                return data
+                            })
+                            .then(() => {
+                                client.sendText(from, 'Tanggal lahir mu? tahun/bulan/tanggal', id)
+                            })
+                            .catch(error => console.error(error))
+                    } else if (UserData.user[`${sender.id}`].profile.tgllhr === undefined) {
+                        if (!chats.match(/^((19|20)\d{2})\/(0[1-9]|1[0-2])\/(0[1-9]|1\d|2\d|3[01])$/)) return client.reply(from, 'Silakan tulis dengan format yang benar. contoh *2000/01/15*', id)
+                        updateJson(UserDataJSON, (data) => {
+                                data.user[`${sender.id}`].profile.tgllhr = chats
+                                return data
+                            })
+                            .then(async () => {
+                                const umur = await getAge(chats)
+                                if (umur <= 30) {
+                                    updateJson(UserDataJSON, (data) => {
+                                            data.user[`${sender.id}`].profile.sekolah = 'pending'
+                                            return data
+                                        })
+                                        .then(() => {
+                                            client.sendText(from, "Apakah kamu masih sekolah? jika iya jawab *ya* jika tidak jawab *tidak*", id)
+                                        })
+                                        .catch(error => console.error(error))
+                                } else if (umur <= 75) {
+                                    updateJson(UserDataJSON, (data) => {
+                                            data.user[`${sender.id}`].profile.sekolah = 'pending'
+                                            return data
+                                        })
+                                        .then(() => {
+                                            client.sendText(from, "Apakah profesi anda guru? jika iya jawab *ya* jika tidak jawab *tidak*", id)
+                                        })
+                                        .catch(error => console.error(error))
+                                } else {
+                                    updateJson(UserDataJSON, (data) => {
+                                            data.user[`${sender.id}`].pendaftaran = {
+                                                tanggal: `${moment().format('DD/MM/YYYY')}`,
+                                                jam: `${moment().format('HH:mm:ss')}`
+                                            }
+                                            return data
+                                        })
+                                        .then(() => {
+                                            UserData = JSON.parse(fs.readFileSync(UserDataJSON))
+                                            client.sendTextWithMentions(from, langID.textReg(sender.id, UserData, prefix, general.Register), id)
+                                        })
+                                }
+                            })
+                            .catch(error => console.error(error))
+                    } else if (UserData.user[`${sender.id}`].profile.sekolah === 'pending') {
+                        const umur = await getAge(UserData.user[`${sender.id}`].profile.tgllhr)
+                        if (umur <= 30) {
+                            if (isi == 'ya') {
+                                updateJson(UserDataJSON, (data) => {
+                                        data.user[`${sender.id}`].profile.sekolah = {
+                                            status: "Siswa"
+                                        }
+                                        return data
+                                    })
+                                    .then(() => {
+                                        client.sendText(from, 'Nama Sekolah mu?', id)
+                                    })
+                                    .catch(error => console.error(error))
+                            } else if (isi == 'guru') {
+                                updateJson(UserDataJSON, (data) => {
+                                        data.user[`${sender.id}`].profile.sekolah = {
+                                            status: "Guru"
+                                        }
+                                        return data
+                                    })
+                                    .then(() => {
+                                        client.sendText(from, 'Nama Sekolah anda mengajar?', id)
+                                    })
+                                    .catch(error => console.error(error))
+                            } else if (isi == 'tidak') {
+                                delete UserData.user[`${sender.id}`].profile.sekolah
+                                fs.writeFile("./lib/json/user.json", JSON.stringify(UserData, null, 4), function (err) {
+                                    updateJson(UserDataJSON, (data) => {
+                                            data.user[`${sender.id}`].pendaftaran = {
+                                                tanggal: `${moment().format('DD/MM/YYYY')}`,
+                                                jam: `${moment().format('HH:mm:ss')}`
+                                            }
+                                            return data
+                                        })
+                                        .then(() => {
+                                            UserData = JSON.parse(fs.readFileSync(UserDataJSON))
+                                            client.sendTextWithMentions(from, langID.textReg(sender.id, UserData, prefix, general.Register), id)
+                                        })
+                                })
+                            } else {
+                                client.sendText(from, 'ya/tidak', id)
+                            }
+                        } else {
+                            if (isi == 'ya') {
+                                updateJson(UserDataJSON, (data) => {
+                                        data.user[`${sender.id}`].profile.sekolah = {
+                                            status: "Guru"
+                                        }
+                                        return data
+                                    })
+                                    .then(() => {
+                                        client.sendText(from, 'Nama Sekolah anda mengajar?', id)
+                                    })
+                                    .catch(error => console.error(error))
+                            } else if (isi == 'tidak') {
+                                delete UserData.user[`${sender.id}`].profile.sekolah
+                                fs.writeFile("./lib/json/user.json", JSON.stringify(UserData, null, 4), function (err) {
+                                    updateJson(UserDataJSON, (data) => {
+                                            data.user[`${sender.id}`].pendaftaran = {
+                                                tanggal: `${moment().format('DD/MM/YYYY')}`,
+                                                jam: `${moment().format('HH:mm:ss')}`
+                                            }
+                                            return data
+                                        })
+                                        .then(() => {
+                                            UserData = JSON.parse(fs.readFileSync(UserDataJSON))
+                                            client.sendTextWithMentions(from, langID.textReg(sender.id, UserData, prefix, general.Register), id)
+                                        })
+                                        .catch(error => console.error(error))
+                                })
+                            } else {
+                                client.sendText(from, 'ya/tidak', id)
+                            }
+                        }
+                    } else if (UserData.user[`${sender.id}`].profile.sekolah.status === 'Siswa') {
+                        if (UserData.user[`${sender.id}`].profile.sekolah.nama === undefined) {
+                            updateJson(UserDataJSON, (data) => {
+                                    data.user[`${sender.id}`].profile.sekolah.nama = chats
+                                    return data
+                                })
+                                .then(() => {
+                                    client.sendText(from, 'Kelas mu?', id)
+                                })
+                                .catch(error => console.error(error))
+                        } else if (UserData.user[`${sender.id}`].profile.sekolah.kelas === undefined) {
+                            updateJson(UserDataJSON, (data) => {
+                                    data.user[`${sender.id}`].profile.sekolah.kelas = chats
+                                    return data
+                                })
+                                .then(() => {
+                                    client.sendText(from, 'Absen mu?', id)
+                                })
+                                .catch(error => console.error(error))
+                        } else if (UserData.user[`${sender.id}`].profile.sekolah.absen === undefined) {
+                            if (isNaN(chats)) return await client.reply(from, 'Absen harus berupa angka!!', id)
+                            updateJson(UserDataJSON, (data) => {
+                                    data.user[`${sender.id}`].profile.sekolah.absen = Number(chats)
+                                    return data
+                                })
+                                .then(() => {
+                                    client.sendText(from, 'Apakah kamu pengurus kelas? jika iya jawab ya jika tidak jawab tidak')
+                                })
+                                .catch(error => console.error(error))
+                        } else if (UserData.user[`${sender.id}`].profile.sekolah.penguruskelas === undefined) {
+                            if (isi == 'ya') {
+                                updateJson(UserDataJSON, (data) => {
+                                        data.user[`${sender.id}`].profile.sekolah.penguruskelas = true
+                                        return data
+                                    })
+                                    .then(() => {
+                                        updateJson(UserDataJSON, (data) => {
+                                                data.user[`${sender.id}`].pendaftaran = {
+                                                    tanggal: `${moment().format('DD/MM/YYYY')}`,
+                                                    jam: `${moment().format('HH:mm:ss')}`
+                                                }
+                                                return data
+                                            })
+                                            .then(() => {
+                                                UserData = JSON.parse(fs.readFileSync(UserDataJSON))
+                                                client.sendTextWithMentions(from, langID.textReg(sender.id, UserData, prefix, general.Register, general.Register), id)
+                                            })
+                                    })
+                                    .catch(error => console.error(error))
+                            } else if (isi == 'tidak') {
+                                updateJson(UserDataJSON, (data) => {
+                                        data.user[`${sender.id}`].profile.sekolah.penguruskelas = false
+                                        return data
+                                    })
+                                    .then(() => {
+                                        updateJson(UserDataJSON, (data) => {
+                                                data.user[`${sender.id}`].pendaftaran = {
+                                                    tanggal: `${moment().format('DD/MM/YYYY')}`,
+                                                    jam: `${moment().format('HH:mm:ss')}`
+                                                }
+                                                return data
+                                            })
+                                            .then(() => {
+                                                UserData = JSON.parse(fs.readFileSync(UserDataJSON))
+                                                client.sendTextWithMentions(from, langID.textReg(sender.id, UserData, prefix, general.Register), id)
+                                            })
+                                    })
+                                    .catch(error => console.error(error))
+                            } else {
+                                client.reply(from, 'ya atau tidak?', id)
+                            }
+                        }
+                    } else if (UserData.user[`${sender.id}`].profile.sekolah.status === 'Guru') {
+                        if (UserData.user[`${sender.id}`].profile.sekolah.nama === undefined) {
+                            updateJson(UserDataJSON, (data) => {
+                                    data.user[`${sender.id}`].profile.sekolah.nama = chats
+                                    data.user[`${sender.id}`].profile.sekolah.pkelas = true
+                                    data.user[`${sender.id}`].profile.sekolah.kelas = []
+                                    return data
+                                })
+                                .then(() => {
+                                    client.sendText(from, 'Kelas anda mengajar? isikan satu persatu', id)
+                                })
+                                .catch(error => console.error(error))
+                        } else if (UserData.user[`${sender.id}`].profile.sekolah.pkelas) {
+                            if (isi === 'sudah') {
+                                if (UserData.user[`${sender.id}`].profile.sekolah.kelas.length === 0) return client.reply(from, "??", id)
+                                updateJson(UserDataJSON, (data) => {
+                                        delete data.user[`${sender.id}`].profile.sekolah.pkelas
+                                        data.user[`${sender.id}`].pendaftaran = {
+                                            tanggal: `${moment().format('DD/MM/YYYY')}`,
+                                            jam: `${moment().format('HH:mm:ss')}`
+                                        }
+                                        return data
+                                    })
+                                    .then(() => {
+                                        UserData = JSON.parse(fs.readFileSync(UserDataJSON))
+                                        client.sendTextWithMentions(from, langID.textReg(sender.id, UserData, prefix, general.Register), id)
+                                    })
+                                    .catch(error => console.error(error))
+                            } else if (isi === 'list') {
+                                const array = UserData.user[`${sender.id}`].profile.sekolah.kelas
+                                let no = 0,
+                                    kelas = "List kelas\n"
+                                array.forEach(element => {
+                                    no++
+                                    kelas += `${no}. *${element}*\n`
+                                })
+                                client.reply(from, kelas, id)
+                            } else if (isi.includes('hapus')) {
+                                const kelas = isi.slice(6)
+                                const getkelas = UserData.user[`${sender.id}`].profile.sekolah.kelas.indexOf(kelas)
+                                if (getkelas === -1) return client.reply(from, `Kelas *${kelas}* tidak ada`, id)
+                                updateJson(UserDataJSON, (data) => {
+                                        data.user[`${sender.id}`].profile.sekolah.kelas.splice(getkelas, 1)
+                                        return data
+                                    })
+                                    .then(() => {
+                                        client.sendText(from, `Kelas *${kelas}* telah terhapus`, id)
+                                    })
+                                    .catch(error => console.error(error))
+                            } else {
+                                updateJson(UserDataJSON, (data) => {
+                                        data.user[`${sender.id}`].profile.sekolah.kelas.push(isi)
+                                        return data
+                                    })
+                                    .then(() => {
+                                        client.sendText(from, 'Ada lagi? Jika sudah semua jawab dengan sudah', id)
+                                    })
+                                    .catch(error => console.error(error))
+                            }
+                        }
+                    }
+                } else if (isGroupMsg) { // group daftar
+                    if (!isGroupAdmins || !isOwner) return
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (UserData.user[`${sender.id}`].pendaftaran === 'pending') return console.log("Pending")
+                    if (isRegGrup === true) return client.reply(from, 'Grup sudah terdaftar', id)
+                    if (UserData.grup[chatId].pendaftaran === undefined || UserData.grup[chatId].pendaftaran === 'belum') {
+                        updateJson(UserDataJSON, (data) => {
+                                data.grup[chatId].pendaftaran = "pending"
+                                data.grup[chatId].sekolah = {}
+                                return data
+                            })
+                            .then(() => {
+                                client.sendText(from, 'Silakan jawab dengan benar. jawab *batal* jika ingin membatalkan pendaftaran', id)
+                                client.sendText(from, 'Nama Sekolah?', id)
+                            })
+                            .catch(error => console.error(error))
+                    } else if (isi === "batal") {
+                        updateJson(UserDataJSON, (data) => {
+                                delete data.grup[chatId]
+                                return data
+                            })
+                            .then(() => {
+                                client.sendText(from, 'Pendaftaran telah dibatalkan', id)
+                            })
+                            .catch(error => console.error(error))
+                    } else if (UserData.grup[chatId].sekolah.nama === undefined) {
+                        updateJson(UserDataJSON, (data) => {
+                                data.grup[`${chatId}`].sekolah.nama = chats
+                                return data
+                            })
+                            .then(() => {
+                                client.sendText(from, 'Kelas?', id)
+                            })
+                            .catch(error => console.error(error))
+                    } else if (UserData.grup[chatId].sekolah.kelas === undefined) {
+                        updateJson(UserDataJSON, (data) => {
+                                data.grup[`${chatId}`].sekolah.kelas = chats
+                                return data
+                            })
+                            .then(() => {
+                                client.sendText(from, 'Jumlah Siswa?', id)
+                            })
+                            .catch(error => console.error(error))
+                    } else if (UserData.grup[chatId].sekolah.jumlahsiswa === undefined) {
+                        if (isNaN(chats)) return await client.reply(from, 'Jumlah Siswa harus berupa angka!!', id)
+                        updateJson(UserDataJSON, (data) => {
+                                data.grup[`${chatId}`].sekolah.jumlahsiswa = chats
+                                return data
+                            })
+                            .then(() => {
+                                updateJson(UserDataJSON, (data) => {
+                                        data.grup[`${chatId}`].pendaftaran = {
+                                            tanggal: `${moment().format('DD/MM/YYYY')}`,
+                                            jam: `${moment().format('HH:mm:ss')}`
+                                        }
+                                        return data
+                                    })
+                                    .then(() => {
+                                        client.sendText(from, 'Pendaftaran berhasil', id)
+                                    })
+                                    .catch(error => console.error(error))
+                            })
+                            .catch(error => console.error(error))
+                    } else {
+                        client.reply(from, 'Grup sudah terdaftar', id)
+                    }
+                } else {
+                    console.log("ERROR DAFTAR")
+                }
+            } else if (general.Register == "mysql") {
+                if (isPrivate) { // private daftar mysql
+                    if (isReg === true) return client.reply(from, langID.isReg(), id)
+                    if (isMedia) return client.reply(from, "Silakan isi dengan benar", id)
+                    if (type === 'sticker') return client.reply(from, "Silakan isi dengan benar", id)
+                    if (emoji.test(chats)) return client.reply(from, "Silakan isi dengan benar", id)
+                    const validasi = await client.checkNumberStatus(sender.id)
+                    db.query(`SELECT * FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, async function (err, result, fields) {
+                        if (result.length === 0) {
+                            db.query(`INSERT INTO user (no_hp, status_pendaftaran) VALUES (${sender.id.replace(/[@c.us]/g, '')}, 'belum')`, function (err, result, fields) {
+                                if (err) {
+                                    console.log(err)
+                                }
+                            })
+                        } else if (result[0].status_pendaftaran === 'belum') {
+                            if (validasi === false) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                            db.query(`UPDATE user SET status_pendaftaran = 'pending' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                client.sendText(from, 'Silakan jawab dengan benar. jawab *batal* jika ingin membatalkan pendaftaran', id)
+                                client.sendText(from, 'Nama mu?', id)
+                            })
+                        } else if (isi === "batal") {
+                            db.query(`DELETE FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                client.sendText(from, 'Pendaftaran telah dibatalkan', id)
+                            })
+                        } else if (result[0].nama === null) {
+                            db.query(`UPDATE user SET nama = '${chats}' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                client.sendText(from, 'Asal?', id)
+                            })
+                        } else if (result[0].asal === null) {
+                            db.query(`UPDATE user SET asal = '${chats}' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                client.sendText(from, 'Tanggal lahir mu? tahun/bulan/tanggal', id)
+                            })
+                        } else if (result[0].tgl_lahir === null) {
+                            if (!chats.match(/^((19|20)\d{2})\/(0[1-9]|1[0-2])\/(0[1-9]|1\d|2\d|3[01])$/)) return client.reply(from, 'Silakan tulis dengan format yang benar. contoh *2000/01/15*', id)
+                            db.query(`UPDATE user SET tgl_lahir = '${chats}' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, async function (err, result, fields) {
+                                const umur = await getAge(chats)
+                                if (umur <= 30) {
+                                    db.query(`UPDATE user SET status = 'pending' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                        client.sendText(from, "Apakah kamu masih sekolah? jika iya jawab *ya* jika tidak jawab *tidak*", id)
+                                    })
+                                } else if (umur <= 75) {
+                                    db.query(`UPDATE user SET status = 'pending' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                        client.sendText(from, "Apakah profesi anda guru? jika iya jawab *ya* jika tidak jawab *tidak*", id)
+                                    })
+                                } else {
+                                    db.query(`UPDATE user SET status = null, status_pendaftaran = 'Selesai', status_pendaftaran = '${moment().format('YYYY/MM/DD HH:mm:ss')}' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                        db.query(`SELECT * FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, async function (err, results, fields) {
+                                            db.query(`SELECT id FROM user`, async function (err, result, fields) {
+                                                client.sendTextWithMentions(from, langID.textReg(sender.id, results, prefix, general.Register, result.length), id)
+                                            })
+                                        })
+                                    })
+                                }
+                            })
+                        } else if (result[0].status === 'pending') {
+                            const umur = await getAge(result[0].tgl_lahir)
+                            if (umur <= 30) {
+                                if (isi == 'ya') {
+                                    db.query(`UPDATE user SET status = 'Siswa' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                        client.sendText(from, "Nama Sekolah mu?", id)
+                                    })
+                                } else if (isi == 'guru') {
+                                    db.query(`UPDATE user SET status = 'Guru' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                        client.sendText(from, "Nama Sekolah anda mengajar?", id)
+                                    })
+                                } else if (isi == 'tidak') {
+                                    db.query(`UPDATE user SET status = null, status_pendaftaran = 'Selesai', pendaftaran = '${moment().format('YYYY/MM/DD HH:mm:ss')}' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                        db.query(`SELECT * FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, async function (err, results, fields) {
+                                            db.query(`SELECT id FROM user`, async function (err, result, fields) {
+                                                client.sendTextWithMentions(from, langID.textReg(sender.id, results, prefix, general.Register, result.length), id)
+                                            })
+                                        })
+                                    })
+                                } else {
+                                    client.sendText(from, 'ya/tidak', id)
+                                }
+                            } else {
+                                if (isi == 'ya') {
+                                    db.query(`UPDATE user SET status = 'Guru' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                        client.sendText(from, "Nama Sekolah anda mengajar?", id)
+                                    })
+                                } else if (isi == 'tidak') {
+                                    db.query(`UPDATE user SET status = null, status_pendaftaran = 'Selesai', pendaftaran = '${moment().format('YYYY/MM/DD HH:mm:ss')}' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                        db.query(`SELECT * FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, async function (err, results, fields) {
+                                            db.query(`SELECT id FROM user`, async function (err, result, fields) {
+                                                client.sendTextWithMentions(from, langID.textReg(sender.id, results, prefix, general.Register, result.length), id)
+                                            })
+                                        })
+                                    })
+                                } else {
+                                    client.sendText(from, 'ya/tidak', id)
+                                }
+                            }
+                        } else if (result[0].status === 'Siswa') {
+                            if (result[0].sekolah === null) {
+                                db.query(`UPDATE user SET sekolah = '${chats}' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                    client.sendText(from, 'Kelas mu?', id)
+                                })
+                            } else if (result[0].kelas === null) {
+                                db.query(`UPDATE user SET kelas = '${chats}' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                    client.sendText(from, 'Absen mu?', id)
+                                })
+                            } else if (result[0].absen === null) {
+                                if (isNaN(chats)) return await client.reply(from, 'Absen harus berupa angka!!', id)
+                                db.query(`UPDATE user SET absen = ${chats} WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                    client.sendText(from, 'Apakah kamu pengurus kelas? jika iya jawab ya jika tidak jawab tidak', id)
+                                })
+                            } else if (result[0].penguruskelas === null) {
+                                if (isi == 'ya') {
+                                    db.query(`UPDATE user SET penguruskelas = true WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                        db.query(`UPDATE user SET status_pendaftaran = 'Selesai', pendaftaran = '${moment().format('YYYY/MM/DD HH:mm:ss')}' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                            db.query(`SELECT * FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, async function (err, results, fields) {
+                                                db.query(`SELECT id FROM user`, async function (err, result, fields) {
+                                                    client.sendTextWithMentions(from, langID.textReg(sender.id, results, prefix, general.Register, result.length), id)
+                                                })
+                                            })
+                                        })
+                                    })
+                                } else if (isi == 'tidak') {
+                                    db.query(`UPDATE user SET penguruskelas = false WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                        db.query(`UPDATE user SET status_pendaftaran = 'Selesai', pendaftaran = '${moment().format('YYYY/MM/DD HH:mm:ss')}' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                            db.query(`SELECT * FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, async function (err, results, fields) {
+                                                db.query(`SELECT id FROM user`, async function (err, result, fields) {
+                                                    client.sendTextWithMentions(from, langID.textReg(sender.id, results, prefix, general.Register, result.length), id)
+                                                })
+                                            })
+                                        })
+                                    })
+                                } else {
+                                    client.sendText(from, 'ya/tidak', id)
+                                }
+                            }
+                        } else if (result[0].status === 'Guru') {
+                            if (result[0].sekolah === null) {
+                                db.query(`UPDATE user SET sekolah = '${chats}', penguruskelas = true WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                    client.sendText(from, 'Kelas anda mengajar?', id)
+                                })
+                            } else if (result[0].kelas === null) {
+                                db.query(`UPDATE user SET kelas = '${chats}' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                    db.query(`UPDATE user SET status_pendaftaran = 'Selesai', pendaftaran = '${moment().format('YYYY/MM/DD HH:mm:ss')}' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                        db.query(`SELECT * FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, async function (err, results, fields) {
+                                            db.query(`SELECT id FROM user`, async function (err, result, fields) {
+                                                client.sendTextWithMentions(from, langID.textReg(sender.id, results, prefix, general.Register, result.length), id)
+                                            })
+                                        })
+                                    })
+                                })
+                            }
+                        }
+                    })
+                } else if (isGroupMsg) {
+                    if (!isGroupAdmins || !isOwner) return
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (isRegGrup === true) return client.reply(from, 'Grup sudah terdaftar', id)
+                    db.query(`SELECT * FROM grup WHERE grup_id=${chatId.replace(/[@g.us]/g, '')}`, async function (err, result, fields) {
+                        if (result.status_pendaftaran === 'pending') return console.log("Pending")
+                        if (result.length === 0) {
+                            db.query(`INSERT INTO grup (grup_id, status_pendaftaran) VALUES (${chatId.replace(/[@g.us]/g, '')}, 'belum')`, function (err, result, fields) {
+                                if (err) {
+                                    console.log(err)
+                                }
+                            })
+                        } else if (result[0].status_pendaftaran === 'belum') {
+                            db.query(`UPDATE grup SET status_pendaftaran = 'pending' WHERE grup_id=${chatId.replace(/[@g.us]/g, '')}`, function (err, result, fields) {
+                                client.sendText(from, 'Silakan jawab dengan benar. jawab *batal* jika ingin membatalkan pendaftaran', id)
+                                client.sendText(from, 'Nama Sekolah?', id)
+                            })
+                        } else if (isi === "batal") {
+                            db.query(`DELETE FROM grup WHERE grup_id=${chatId.replace(/[@g.us]/g, '')}`, function (err, result, fields) {
+                                client.sendText(from, 'Pendaftaran telah dibatalkan', id)
+                            })
+                        } else if (result[0].sekolah === null) {
+                            db.query(`UPDATE grup SET sekolah = '${chats}' WHERE grup_id=${chatId.replace(/[@g.us]/g, '')}`, function (err, result, fields) {
+                                client.sendText(from, 'Kelas?', id)
+                            })
+                        } else if (result[0].kelas === null) {
+                            db.query(`UPDATE grup SET kelas = '${chats}' WHERE grup_id=${chatId.replace(/[@g.us]/g, '')}`, function (err, result, fields) {
+                                client.sendText(from, 'Jumlah Siswa?', id)
+                            })
+                        } else if (result[0].jumlahsiswa === null) {
+                            if (isNaN(chats)) return await client.reply(from, 'Jumlah Siswa harus berupa angka!!', id)
+                            db.query(`UPDATE grup SET jumlahsiswa = ${chats} WHERE grup_id=${chatId.replace(/[@g.us]/g, '')}`, function (err, result, fields) {
+                                db.query(`UPDATE grup SET status_pendaftaran = 'Selesai', pendaftaran = '${moment().format('YYYY/MM/DD HH:mm:ss')}' WHERE grup_id=${chatId.replace(/[@g.us]/g, '')}`, function (err, result, fields) {
                                     client.sendText(from, 'Pendaftaran berhasil', id)
+                                })
+                            })
+                        } else {
+                            client.reply(from, 'Grup sudah terdaftar', id)
+                        }
+                    })
+                }
+            }
+        }
+
+        async function cekkehadiran() {
+            if (general.Register == "json") {
+                const GetUserNA = UserData.user[`${sender.id}`].profile.nama
+                const GetUserAB = UserData.user[`${sender.id}`].profile.sekolah.absen
+                for (let i = 0; i < DataAbsensi[chatId].absensi.length; i++) {
+                    if (GetUserNA.match(DataAbsensi[chatId].absensi[i].nama)) {
+                        const abs = DataAbsensi[chatId].absensi[i].absen
+                        if (abs == GetUserAB) {
+                            return {
+                                status: true,
+                                index: i
+                            }
+                        }
+                    }
+                }
+                return {
+                    status: false,
+                    index: -1
+                }
+            } else if (general.Register == "mysql") {
+                const DBR = async (db) => new Promise((resolve, reject) => {
+                    db.query(`SELECT * FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, async function (err, result, fields) {
+                        const GetUserNA = result[0].nama
+                        const GetUserAB = result[0].absen
+                        for (let i = 0; i < DataAbsensi[chatId].absensi.length; i++) {
+                            if (GetUserNA.match(DataAbsensi[chatId].absensi[i].nama)) {
+                                const abs = DataAbsensi[chatId].absensi[i].absen
+                                if (abs == GetUserAB) {
+                                    resolve({
+                                        status: true,
+                                        index: i
+                                    })
+                                }
+                            }
+                        }
+                        resolve({
+                            status: false,
+                            index: -1
+                        })
+                    })
+                })
+                return await DBR(db)
+            }
+        }
+
+        async function addgrupSet(settings, status) {
+            if (general.Register == "json") {
+                if (UserData.user === undefined && UserData.grup === undefined) {
+                    updateJson(UserDataJSON, (data) => {
+                            data = {
+                                user: {},
+                                grup: {}
+                            }
+                            return data
+                        })
+                        .then(() => {
+                            updateJson(UserDataJSON, (data) => {
+                                    data.grup[`${chatId}`] = {
+                                        pendaftaran: "belum",
+                                        settings: {}
+                                    }
+                                    data.grup[`${chatId}`].settings[`${settings}`] = status
+                                    return data
+                                })
+                                .then(() => {
+                                    valsts = true
                                 })
                                 .catch(error => console.error(error))
                         })
                         .catch(error => console.error(error))
                 } else {
-                    client.reply(from, 'Grup sudah terdaftar', id)
+                    updateJson(UserDataJSON, (data) => {
+                            data.grup[`${chatId}`] = {
+                                pendaftaran: "belum",
+                                settings: {}
+                            }
+                            return data
+                        })
+                        .then(() => {
+                            updateJson(UserDataJSON, (data) => {
+                                    data.grup[`${chatId}`].settings[`${settings}`] = status
+                                    return data
+                                })
+                                .then(() => {
+                                    valsts = true
+                                })
+                                .catch(error => console.error(error))
+                        })
+                        .catch(error => console.error(error))
                 }
-            } else {
-                console.log("ERROR DAFTAR")
-            }
-        }
-
-        function cekkehadiran() {
-            const GetUserNA = UserData.user[`${sender.id}`].profile.nama
-            const GetUserAB = UserData.user[`${sender.id}`].profile.sekolah.absen
-            for (let i = 0; i < DataAbsensi[chatId].absensi.length; i++) {
-                if (GetUserNA.match(DataAbsensi[chatId].absensi[i].nama)) {
-                    const abs = DataAbsensi[chatId].absensi[i].absen
-                    if (abs == GetUserAB) {
-                        return {
-                            status: true,
-                            index: i
-                        }
-                    }
-                }
-            }
-            return {
-                status: false,
-                index: -1
-            }
-        }
-
-        async function addgrupSet(settings, status) {
-            if (UserData.user === undefined && UserData.grup === undefined) {
-                updateJson(UserDataJSON, (data) => {
-                        data = {
-                            user: {},
-                            grup: {}
-                        }
-                        return data
-                    })
-                    .then(() => {
-                        updateJson(UserDataJSON, (data) => {
-                                data.grup[`${chatId}`] = {
-                                    pendaftaran: "belum",
-                                    settings: {}
-                                }
-                                data.grup[`${chatId}`].settings[`${settings}`] = status
-                                return data
-                            })
-                            .then(() => {
-                                valsts = true
-                            })
-                            .catch(error => console.error(error))
-                    })
-                    .catch(error => console.error(error))
-            } else {
-                updateJson(UserDataJSON, (data) => {
-                        data.grup[`${chatId}`] = {
-                            pendaftaran: "belum",
-                            settings: {}
-                        }
-                        return data
-                    })
-                    .then(() => {
-                        updateJson(UserDataJSON, (data) => {
-                                data.grup[`${chatId}`].settings[`${settings}`] = status
-                                return data
-                            })
-                            .then(() => {
-                                valsts = true
-                            })
-                            .catch(error => console.error(error))
-                    })
-                    .catch(error => console.error(error))
             }
         }
 
@@ -900,18 +1273,37 @@ module.exports = msgHandler = async (client, message) => {
         const isQuotedGif = quotedMsg && quotedMsg.type === 'gif'
         const isSticker = quotedMsg && quotedMsg.type === 'sticker'
         const isQuotedSticker = quotedMsg && quotedMsg.type === 'sticker'
+        const CRegM = general.Register == "json" || general.Register == "mysql"
 
-        let Sticker =  {}
+        let Sticker = {}
         if (isReg) {
-            if (sticker.author === false) {
-                Sticker['author'] = UserData.user[`${sender.id}`].profile.nama
-            } else {
-                Sticker['author'] = sticker.author
-            }
-            if (sticker.pack === false) {
-                Sticker['pack'] = pkg.name
-            } else {
-                Sticker['pack'] = sticker.pack
+            if (general.Register == "json") {
+                if (sticker.author === false) {
+                    Sticker['author'] = UserData.user[`${sender.id}`].profile.nama
+                } else {
+                    Sticker['author'] = sticker.author
+                }
+                if (sticker.pack === false) {
+                    Sticker['pack'] = pkg.name
+                } else {
+                    Sticker['pack'] = sticker.pack
+                }
+            } else if (general.Register == "mysql") {
+                const SDBR = async (db) => new Promise((resolve, reject) => {
+                    db.query(`SELECT nama FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                        if (sticker.author === false) {
+                            resolve(result[0].nama)
+                        } else {
+                            resolve(sticker.author)
+                        }
+                    })
+                })
+                Sticker['author'] = await SDBR(db)
+                if (sticker.pack === false) {
+                    Sticker['pack'] = pkg.name
+                } else {
+                    Sticker['pack'] = sticker.pack
+                }
             }
         }
         if (isPrivate) {
@@ -972,7 +1364,7 @@ module.exports = msgHandler = async (client, message) => {
         if (isMuted(chatId) && !banChat() || isOwner) {
             switch (command) {
                 case 'menu':
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (isGSCH) {
                         client.sendText(from, langID.textMenuSCH(pushname, prefix), id)
                     } else {
@@ -995,24 +1387,37 @@ module.exports = msgHandler = async (client, message) => {
                     break
 
                 case 'prefix':
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (args.length === 0) return client.reply(from, `Prefix tidak boleh kosong. contoh *${prefix}prefix ,*`, id)
+                    if (args[0].length > 1) return client.reply(from, `Prefix tidak boleh lebih dari 1 *karakter/huruf.*`, id)
                     if (args[0] == prefix) return client.reply(from, `Prefix yang kamu masukan sama dengan prefix yang sekarang digunakan`, id)
-                    if (isPrivate) {
-                        updateJson(UserDataJSON, (data) => {
-                                data.user[`${sender.id}`].settings.prefix = args[0]
-                                return data
-                            })
-                            .then(() => {
+                    if (general.Register == "json") {
+                        if (isPrivate) {
+                            updateJson(UserDataJSON, (data) => {
+                                    data.user[`${sender.id}`].settings.prefix = args[0]
+                                    return data
+                                })
+                                .then(() => {
+                                    client.sendText(from, `Berhasil mengganti prefix dari *${prefix}* menjadi *${args[0]}*`, id)
+                                })
+                                .catch(error => console.error(error))
+                        } else if (isGroupMsg) {
+                            if (!isGroupAdmins) return client.reply(from, 'Gagal, perintah ini hanya dapat digunakan oleh admin grup!', id)
+                            addgrupSet('prefix', args[0]).then(() => {
                                 client.sendText(from, `Berhasil mengganti prefix dari *${prefix}* menjadi *${args[0]}*`, id)
                             })
-                            .catch(error => console.error(error))
-                    } else if (isGroupMsg) {
-                        if (!isGroupAdmins) return client.reply(from, 'Gagal, perintah ini hanya dapat digunakan oleh admin grup!', id)
-                        if (args.length === 0) return client.reply(from, `prefix tidak boleh kosong. contoh *${prefix}prefix ,*`, id)
-                        addgrupSet('prefix', args[0]).then(() => {
-                            client.sendText(from, `Berhasil mengganti prefix dari *${prefix}* menjadi *${args[0]}*`, id)
-                        })
+                        }
+                    } else if (general.Register == "mysql") {
+                        if (isPrivate) {
+                            db.query(`UPDATE user SET prefix = '${args[0]}' WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                client.sendText(from, `Berhasil mengganti prefix dari *${prefix}* menjadi *${args[0]}*`, id)
+                            })
+                        } else if (isGroupMsg) {
+                            if (!isGroupAdmins) return client.reply(from, 'Gagal, perintah ini hanya dapat digunakan oleh admin grup!', id)
+                            db.query(`UPDATE grup SET prefix = '${args[0]}' WHERE grup_id=${chatId.replace(/[@g.us]/g, '')}`, function (err, result, fields) {
+                                client.sendText(from, `Berhasil mengganti prefix dari *${prefix}* menjadi *${args[0]}*`, id)
+                            })
+                        }
                     }
                     break
 
@@ -1026,7 +1431,7 @@ module.exports = msgHandler = async (client, message) => {
                 case 'gifstiker':
                 case 'gifsticker':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     client.simulateTyping(from, true)
                     if ((isMedia && isImage || isQuotedImage) && args.length === 0) {
                         try {
@@ -1034,7 +1439,8 @@ module.exports = msgHandler = async (client, message) => {
                             const _mimetype = isQuotedImage ? quotedMsg.mimetype : mimetype
                             const mediaData = await decryptMedia(encryptMedia, uaOverride)
                             const imageBase64 = `data:${_mimetype};base64,${mediaData.toString('base64')}`
-                            await client.sendImageAsSticker(from, imageBase64, {
+                            const result = StickerAutoResize ? await imgresize(imageBase64, _mimetype, 512, 512) : imageBase64
+                            await client.sendImageAsSticker(from, result, {
                                 author: Sticker.author,
                                 pack: Sticker.pack
                             }).then(() => {
@@ -1137,7 +1543,7 @@ module.exports = msgHandler = async (client, message) => {
 
                 case 'gtts':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     try {
                         if (args.length === 0) return client.reply(from, `Kirim perintah *${prefix}gtts [ kodebahasa ] [ Teks ]*, contoh *${prefix}gtts id hai kamu*`, id)
                         const gtts = require('node-gtts')(args[0])
@@ -1160,52 +1566,125 @@ module.exports = msgHandler = async (client, message) => {
                 case 'kb':
                 case 'kodebahasa':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     client.sendText(from, langID.textKodeBahasa(), id)
                     break
 
                 case 'simi':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
-                    if (isPrivate) {
-                        if (args[0] == 'on') {
-                            if (SimiPrivate) return await client.reply(from, 'Simi sudah on', id)
-                            updateJson(UserDataJSON, (data) => {
-                                    data.user[`${sender.id}`].settings.simi = true
-                                    return data
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (general.Register == "json") {
+                        if (isPrivate) {
+                            if (args[0] == 'on') {
+                                if (SimiPrivate) return await client.reply(from, 'Simi sudah on', id)
+                                updateJson(UserDataJSON, (data) => {
+                                        data.user[`${sender.id}`].settings.simi = true
+                                        return data
+                                    })
+                                    .then(() => {
+                                        client.sendText(from, `Simi aktif`, id)
+                                    })
+                                    .catch(error => console.error(error))
+                            } else if (args[0] == 'off') {
+                                if (!SimiPrivate) return await client.reply(from, 'Simi sudah off', id)
+                                updateJson(UserDataJSON, (data) => {
+                                        data.user[`${sender.id}`].settings.simi = false
+                                        return data
+                                    })
+                                    .then(() => {
+                                        client.sendText(from, `Simi off!`, id)
+                                    })
+                                    .catch(error => console.error(error))
+                            } else {
+                                client.reply(from, `${prefix}simi on/off`)
+                            }
+                        } else if (isGroupMsg) {
+                            if (!isGroupAdmins) return client.reply(from, 'Gagal, perintah ini hanya dapat digunakan oleh admin grup!', id)
+                            if (args.length !== 1) return client.reply(from, `Untuk mengaktifkan simsimi pada Group Chat\n\nPenggunaan\n${prefix}simi on --mengaktifkan\n${prefix}simi off --nonaktifkan\n`, id)
+                            if (args[0] == 'on') {
+                                if (SimiGrup) return await client.reply(from, 'Simi sudah on', id)
+                                addgrupSet('simi', true).then(() => {
+                                    client.sendText(from, `Simi on`, id)
                                 })
-                                .then(() => {
-                                    client.sendText(from, `Simi aktif`, id)
-                                })
-                                .catch(error => console.error(error))
-                        } else if (args[0] == 'off') {
-                            if (!SimiPrivate) return await client.reply(from, 'Simi sudah off', id)
-                            updateJson(UserDataJSON, (data) => {
-                                    data.user[`${sender.id}`].settings.simi = false
-                                    return data
-                                })
-                                .then(() => {
+                            } else if (args[0] == 'off') {
+                                if (!SimiGrup) return await client.reply(from, 'Simi sudah off', id)
+                                addgrupSet('simi', false).then(() => {
                                     client.sendText(from, `Simi off!`, id)
                                 })
+                            } else {
+                                client.reply(from, `Untuk mengaktifkan simsimi pada Group Chat\n\nPenggunaan\n${prefix}simi on --mengaktifkan\n${prefix}simi off --nonaktifkan\n`, id)
+                            }
+                        }
+                    } else if (general.Register == "mysql") {
+                        if (isPrivate) {
+                            if (args[0] == 'on') {
+                                if (SimiPrivate) return await client.reply(from, 'Simi sudah on', id)
+                                db.query(`UPDATE user SET simi = true WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                    client.sendText(from, `Simi aktif`, id)
+                                })
+                            } else if (args[0] == 'off') {
+                                if (!SimiPrivate) return await client.reply(from, 'Simi sudah off', id)
+                                db.query(`UPDATE user SET simi = false WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                    client.sendText(from, `Simi off!`, id)
+                                })
+                            }
+                        } else if (isGroupMsg) {
+                            if (!isGroupAdmins) return client.reply(from, 'Gagal, perintah ini hanya dapat digunakan oleh admin grup!', id)
+                            if (args.length !== 1) return client.reply(from, `Untuk mengaktifkan simsimi pada Group Chat\n\nPenggunaan\n${prefix}simi on --mengaktifkan\n${prefix}simi off --nonaktifkan\n`, id)
+                            if (args[0] == 'on') {
+                                if (SimiGrup) return await client.reply(from, 'Simi sudah on', id)
+                                db.query(`UPDATE grup SET simi = true WHERE no_hp=${chatId.replace(/[@g.us]/g, '')}`, function (err, result, fields) {
+                                    client.sendText(from, `Simi aktif`, id)
+                                })
+                            } else if (args[0] == 'off') {
+                                if (!SimiGrup) return await client.reply(from, 'Simi sudah off', id)
+                                db.query(`UPDATE grup SET simi = false WHERE grup_id=${chatId.replace(/[@g.us]/g, '')}`, function (err, result, fields) {
+                                    client.sendText(from, `Simi off!`, id)
+                                })
+                            }
+                        }
+                    }
+                    break
+
+                case 'str':
+                case 'satr':
+                case 'stickerautoresize':
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (general.Register == "json") {
+                        if (args[0] == 'on') {
+                            if (CStickerAutoResize) return await client.reply(from, 'Sticker Auto Resize Sudah ON', id)
+                            updateJson(UserDataJSON, (data) => {
+                                    data.user[`${sender.id}`].settings.StickerAutoResize = true
+                                    return data
+                                })
+                                .then(() => {
+                                    client.sendText(from, `Sticker Auto Resize Aktif`, id)
+                                })
+                                .catch(error => console.error(error))
+                        } else if (args[0] == 'off') {
+                            if (!CStickerAutoResize) return await client.reply(from, 'Sticker Auto Resize Sudah OFF', id)
+                            updateJson(UserDataJSON, (data) => {
+                                    data.user[`${sender.id}`].settings.StickerAutoResize = false
+                                    return data
+                                })
+                                .then(() => {
+                                    client.sendText(from, `Sticker Auto Resize OFF`, id)
+                                })
                                 .catch(error => console.error(error))
                         } else {
-                            client.reply(from, `${prefix}simi on/off`)
+                            client.reply(from, `${prefix}str on/off`)
                         }
-                    } else if (isGroupMsg) {
-                        if (!isGroupAdmins) return client.reply(from, 'Gagal, perintah ini hanya dapat digunakan oleh admin grup!', id)
-                        if (args.length !== 1) return client.reply(from, `Untuk mengaktifkan simsimi pada Group Chat\n\nPenggunaan\n${prefix}simi on --mengaktifkan\n${prefix}simi off --nonaktifkan\n`, id)
+                    } else if (general.Register == "mysql") {
                         if (args[0] == 'on') {
-                            if (SimiGrup) return await client.reply(from, 'Simi sudah on', id)
-                            addgrupSet('simi', true).then(() => {
-                                client.sendText(from, `Simi on`, id)
+                            if (CStickerAutoResize) return await client.reply(from, 'Sticker Auto Resize Sudah ON', id)
+                            db.query(`UPDATE user SET StickerAutoResize = true WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                client.sendText(from, `Sticker Auto Resize Aktif`, id)
                             })
                         } else if (args[0] == 'off') {
-                            if (!SimiGrup) return await client.reply(from, 'Simi sudah off', id)
-                            addgrupSet('simi', false).then(() => {
-                                client.sendText(from, `Simi off!`, id)
+                            if (!CStickerAutoResize) return await client.reply(from, 'Sticker Auto Resize Sudah OFF', id)
+                            db.query(`UPDATE user SET StickerAutoResize = false WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, function (err, result, fields) {
+                                client.sendText(from, `Sticker Auto Resize OFF`, id)
                             })
-                        } else {
-                            client.reply(from, `Untuk mengaktifkan simsimi pada Group Chat\n\nPenggunaan\n${prefix}simi on --mengaktifkan\n${prefix}simi off --nonaktifkan\n`, id)
                         }
                     }
                     break
@@ -1213,7 +1692,7 @@ module.exports = msgHandler = async (client, message) => {
                 case 'gempa':
                 case 'infogempa':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     const getinfo = await got.get('https://api.izo.my.id/infogempa').json()
                     const {
                         potensi, koordinat, lokasi, kedalaman, magnitude, waktu, map
@@ -1224,7 +1703,7 @@ module.exports = msgHandler = async (client, message) => {
 
                 case 'gempadirasakan':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     const getinfogs = await got.get('https://data.bmkg.go.id/DataMKG/TEWS/gempadirasakan.json').json()
                     let gempa = 'Gempa Yang Dirasakan\n'
                     for (let i = 0; i < getinfogs.Infogempa.gempa.length; i++) {
@@ -1246,7 +1725,7 @@ module.exports = msgHandler = async (client, message) => {
 
                 case 'ssweb':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (!isUrl(args[0])) return client.reply(from, `Screenshot website\n\nPemakaian: ${prefix}ss [url]\n\ncontoh: ${prefix}ss https://www.google.com`, id)
                     const ss = await scraper.apiflash(args[0])
                     await client.sendFile(from, ss, 'ss.jpg', '', id)
@@ -1257,7 +1736,7 @@ module.exports = msgHandler = async (client, message) => {
 
                 case 'covid':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (args.length === 0) return client.reply(from, `Kirim perintah *${prefix}covid [ negara ]*, contoh *${prefix}covid indonesia*`, id)
                     const covid = await scraper.covid(args)
                     client.sendText(from, covid, id)
@@ -1266,7 +1745,7 @@ module.exports = msgHandler = async (client, message) => {
                 case 'kalkulator':
                 case 'calculator':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     let sl = txt
                     sl = replaceAll(sl, 'x', '*')
                     sl = replaceAll(sl, '÷', '/')
@@ -1276,14 +1755,14 @@ module.exports = msgHandler = async (client, message) => {
 
                 case 'teksalay':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (args.length == 0) return client.reply(from, `Kirim ${prefix}teksalay [teks]`, id)
                     client.sendText(from, TeksAlay(txt.toRandomCase()), id)
                     break
 
                 case 'artinama':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (args.length == 0) return client.reply(from, `Kirim ${prefix}artinama [nama]`, id)
                     const getartin = await primbon.artiNama(txt)
                     client.sendText(from, getartin, id)
@@ -1291,7 +1770,7 @@ module.exports = msgHandler = async (client, message) => {
 
                 case 'artimimpi':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (args.length == 0) return client.reply(from, `Kirim ${prefix}artimimpi [kata kunci mimpi]. Contoh ${prefix}artimimpi hantu`, id)
                     const getartim = await primbon.tafsirMimpi(txt)
                     client.sendText(from, getartim, id)
@@ -1299,7 +1778,7 @@ module.exports = msgHandler = async (client, message) => {
 
                 case 'cocok?':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     const nama1 = arg.split('&')[0]
                     const nama2 = arg.split('&')[1]
                     const getartij = await primbon.Jodoh(nama1, nama2)
@@ -1330,7 +1809,7 @@ module.exports = msgHandler = async (client, message) => {
 
                 case 'totext':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (isMedia && type === 'image' || isQuotedImage) {
                         client.reply(from, langID.wait(), id)
                         const encryptMedia = isQuotedImage ? quotedMsg : message
@@ -1343,7 +1822,7 @@ module.exports = msgHandler = async (client, message) => {
 
                 case 'play':
                     if (isGSCH) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (!args.length >= 1) return client.reply(from, `Format salah, ${prefix}play judul lagu - artis`, id)
                     client.simulateTyping(from, true)
                     yts(body.slice(6))
@@ -1376,11 +1855,6 @@ module.exports = msgHandler = async (client, message) => {
                                         client.simulateTyping(from, false)
                                     }
                                 }))
-                                .catch((err) => {
-                                    console.log(err)
-                                    client.sendText(from, `Error`)
-                                    client.simulateTyping(from, false)
-                                })
                         }).catch(err => {
                             console.log(err)
                             client.reply(from, `Error`, id);
@@ -1400,8 +1874,13 @@ module.exports = msgHandler = async (client, message) => {
                             client.reply(from, 'Ada yang Error!', id)
                         })
                     break
+
+                case 'wame':
+                    client.reply(from, `*Link WA Mu ${pushname}*\n*wa.me/${sender.id.replace(/[@c.us]/g, '')}*\n*Atau*\n*api.whatsapp.com/send?phone=${sender.id.replace(/[@c.us]/g, '')}*`, id)
+                    break
+
                 case 'tag':
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (!isGroupMsg) return client.reply(from, 'perintah ini hanya dapat digunakan di dalam grup', id)
                     if (!args.length >= 1) return client.reply(from, 'Pesan tidak boleh kosong', id)
                     let tunjuk = groupMembers[Math.floor(Math.random() * groupMembers.length)]
@@ -1416,9 +1895,20 @@ module.exports = msgHandler = async (client, message) => {
                     client.sendTextWithMentions(from, `${txt} 👉 @${tunjuk}`, id)
                     break
 
+                case 'tagall':
+                case 'everyone':
+                    if (!isGroupAdmins) return client.reply(from, 'Gagal, perintah ini hanya dapat digunakan oleh admin grup!', id)
+                    if (!isGroupMsg) return client.reply(from, 'Maaf, perintah ini hanya dapat dipakai didalam grup!', id)
+                    if (args.length >= 1) {
+                        client.sendTextWithMentions(from, `@${sender.id.replace(/[@c.us]/g, '')} : ❝ ${txt} ❞\n\n@${groupMembers.toString().replace(/[@c.us]/g, '').replace(/[,]/g, '\n@').replace(new RegExp("\n@"+sender.id.replace(/[@c.us]/g, ''), "g"), "")}`)
+                    } else {
+                        client.sendTextWithMentions(from, `@${groupMembers.toString().replace(/[@c.us]/g, '').replace(/[,]/g, '\n@').replace(new RegExp("\n@"+sender.id.replace(/[@c.us]/g, ''), "g"), "")}`)
+                    }
+                    break
+
                 case 'join':
                     if (!isOwner) return
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (args.length >= 1) {
                         const link = body.slice(6)
                         const invite = link.replace('https://chat.whatsapp.com/', '')
@@ -1439,7 +1929,7 @@ module.exports = msgHandler = async (client, message) => {
                     break
 
                 case 'add':
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (!isGroupMsg) return client.reply(from, 'Fitur ini hanya bisa di gunakan dalam group', id)
                     if (args.length === 0) return client.reply(from, `Untuk menggunakan fitur ini, kirim perintah *${prefix}add* 628xxxxx`, id)
                     if (!isGroupAdmins) return client.reply(from, 'Perintah ini hanya bisa di gunakan oleh admin group', id)
@@ -1452,7 +1942,7 @@ module.exports = msgHandler = async (client, message) => {
                     break
 
                 case 'kick':
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (!isGroupMsg) return client.reply(from, 'Maaf, perintah ini hanya dapat dipakai didalam grup!', id)
                     if (!isGroupAdmins) return client.reply(from, 'Gagal, perintah ini hanya dapat digunakan oleh admin grup!', id)
                     if (!isBotGroupAdmins) return client.reply(from, 'Wahai admin, jadikan saya sebagai admin grup dahulu :)', id)
@@ -1467,7 +1957,7 @@ module.exports = msgHandler = async (client, message) => {
 
                     //#sekolah
                 case 'absen':
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (!isGroupMsg) return client.reply(from, "Hanya Grup", id)
                     if (!isRegGrup) return client.reply(from, `Grup belum terdaftar *${prefix}daftar* untuk mendaftarkan grup`, id)
                     if (guruorpgls) {
@@ -1491,7 +1981,7 @@ module.exports = msgHandler = async (client, message) => {
                     break
 
                 case 'hadir':
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (!isGroupMsg) return client.reply(from, "Hanya Grup", id)
                     if (!isRegGrup) return client.reply(from, `Grup belum terdaftar *${prefix}daftar* untuk mendaftarkan grup`, id)
                     if (!UserData.user[`${sender.id}`].profile.sekolah.status === "Guru") return client.reply(from, 'Maaf absen hanya diperuntukkan untuk siswa', id)
@@ -1508,11 +1998,26 @@ module.exports = msgHandler = async (client, message) => {
                             })
                             .catch(error => console.error(error))
                     } else {
-                        const usrabs = {
-                            nama: `${UserData.user[`${sender.id}`].profile.nama}`,
-                            absen: `${UserData.user[`${sender.id}`].profile.sekolah.absen}`,
-                            pesan: txt,
-                            waktu: moment().format('HH.mm.ss')
+                        let usrabs
+                        if (general.Register == "json") {
+                            usrabs = {
+                                nama: `${UserData.user[`${sender.id}`].profile.nama}`,
+                                absen: `${UserData.user[`${sender.id}`].profile.sekolah.absen}`,
+                                pesan: txt,
+                                waktu: moment().format('HH.mm.ss')
+                            }
+                        } else if (general.Register == "mysql") {
+                            const DBR = async (db) => new Promise((resolve, reject) => {
+                                db.query(`SELECT * FROM user WHERE no_hp=${sender.id.replace(/[@c.us]/g, '')}`, async function (err, result, fields) {
+                                    resolve({
+                                        nama: result[0].nama,
+                                        absen: `${result[0].absen}`,
+                                        pesan: txt,
+                                        waktu: moment().format('HH.mm.ss')
+                                    })
+                                })
+                            })
+                            usrabs = await DBR(db)
                         }
                         updateJson(DataAbsensiJSON, (data) => {
                                 data[chatId].absensi.push(usrabs)
@@ -1527,7 +2032,7 @@ module.exports = msgHandler = async (client, message) => {
 
                 case 'absensi':
                 case 'listabsensi':
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     if (!isGroupMsg) return client.reply(from, "Hanya Grup", id)
                     if (!isRegGrup) return client.reply(from, `Grup belum terdaftar *${prefix}daftar* untuk mendaftarkan grup`, id)
                     if (!guruorpgls) return client.reply(from, "Hanya dapat digunakan oleh guru/pengurus kelas", id)
@@ -1593,21 +2098,20 @@ module.exports = msgHandler = async (client, message) => {
                 case 'stats':
                 case 'botstat':
                 case 'ping':
-                    if (!isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
+                    if (CRegM && !isReg) return client.reply(from, langID.notReg(prefix, isPrivate), id)
                     client.simulateTyping(from, true)
                     const os = require('os')
                     const loadedMsg = await client.getAmountOfLoadedMessages()
                     const chatIds = await client.getAllChatIds()
                     const groups = await client.getAllGroups()
-                    const battery = await client.getBatteryLevel() === 'ERROR: NO_BATT_ON_MD' ? '♾️' : await client.getBatteryLevel()
-                    const isCharged = await client.getBatteryLevel() === 'ERROR: NO_BATT_ON_MD' ? true : await client.getBatteryLevel()
+                    const battery = setting.WA.multiDevice ? '♾️' : await client.getBatteryLevel()
+                    const isCharged = setting.WA.multiDevice ? true : await client.getIsPlugged()
                     const {
                         receive
                     } = JSON.parse(fs.readFileSync('./util/stat.json'))
                     const UPTIME = await convertTime(os.uptime())
                     const osPlatfom = await Platfom(os.platform())
-                    const device = await client.getMe()
-                    client.reply(from, `💻 *Platform Info* :\n- CPU: ${os.cpus()[0].model}\n- RAM: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)}MB / ${Math.round(require('os').totalmem / 1024 / 1024)}MB\n- Platform: ${osPlatfom}\n- UPTIME: ${UPTIME}\n\n*📱 Device Info* :\n- 🔋 Battery: ${battery} ${isCharged ? '🔌 Charging...' : '⚡ Discharging'}\n- 24 Hours Online : ${device.is24h == undefined ? '♾️' : device.is24h }\n\n*Status* :\n- ${loadedMsg} Loaded Messages\n- ${groups.length} Group Chats\n- ${chatIds.length - groups.length} Personal Chats\n- ${chatIds.length} Total Chats\n- ${receive.chat} Chats Received\n\nSpeed: ${processTime(t, moment())} Second`, id)
+                    client.reply(from, `💻 *Platform Info* :\n- CPU: ${os.cpus()[0].model}\n- RAM: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)}MB / ${Math.round(require('os').totalmem / 1024 / 1024)}MB\n- Platform: ${osPlatfom}\n- UPTIME: ${UPTIME}\n\n*📱 Device Info* :\n- 🔋 Battery: ${battery} ${isCharged ? '🔌 Charging...' : '⚡ Discharging'}\n${setting.WA.multiDevice ? '- 24 Hours Online : ♾️\n' : ''}\n*Status* :\n- ${loadedMsg} Loaded Messages\n- ${groups.length} Group Chats\n- ${chatIds.length - groups.length} Personal Chats\n- ${chatIds.length} Total Chats\n- ${receive.chat} Chats Received\n\nSpeed: ${processTime(t, moment())} Second`, id)
                     client.simulateTyping(from, false)
                     break
 
